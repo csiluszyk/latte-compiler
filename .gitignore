@@ -1,0 +1,8 @@
+*.hi
+*.o
+*.swp
+*~
+.idea/
+.stack-work/
+dist/
+latte.iml
