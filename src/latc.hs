@@ -9,7 +9,7 @@ import LexLatte
 import ParLatte
 import AbsLatte
 
-import qualified Frontend
+import TypeCheckLatte (typeCheck)
 
 main :: IO ()
 main = do
@@ -32,12 +32,12 @@ compile hFile = do
       hPutStrLn stderr s
       exitFailure
     Ok prog ->
-      case Frontend.eval prog of
+      case typeCheck prog of
         Left err -> do
           hPutStrLn stderr "BAD"
           hPutStrLn stderr err
           exitFailure
         Right symTab -> do
           -- result :: [Value]
-          print symTab
+          -- print symTab
           exitSuccess
