@@ -1,22 +1,17 @@
-- Gdy kompilator akceptuje program, musi wypisać w pierwszej linii stderr napis OK ("OK\n"). Dalsze linie i stdout - dowolne.
-    - Kompilator musi się w takiej sytuacji zakończyć z kodem powrotu 0.
-- Gdy kompilator odrzuca program musi wypisać w pierwszej linii stderr napis ERROR ("ERROR\n"). Dalsze linie powinny zawierać stosowne informacje o błędach.
-    - Kompilator musi się w takiej sytuacji zakończyć z kodem powrotu różnym od 0.
-- latc_llvm
-
+type_check:
 - Funkcje muszą mieć unikalne nazwy
-- W programie musi wystąpić funkcja o nazwie main zwracająca int i nie przyjmująca argumentów (od niej zaczyna się wykonanie programu)
 - Funkcje o typie wyniku innym niż void muszą zwracać wartość za pomocą instrukcji return
-- Funkcje mogą być wzajemnie rekurencyjne
 - użycie funkcji może występować przed jej definicją
-
-- Jeśli zmienna nie jest jawnie inicjalizowana w momencie deklaracji, jest inicjalizowana wartością domyślną (0 dla int, "" dla string, false dla bool).
 - Zmienne zadeklarowane w bloku nie są widoczne poza nim i przesłaniają zmienne o tej samej nazwie spoza bloku.
 - W obrębie bloku zmienne muszą mieć unikalne nazwy.
-
 - Nie ma konwersji pomiedzy typami.
-- Dla potrzeb analizy semantycznej może być pożyteczne wprowadzenie typów funkcyjnych.
+- Wyrażenie logiczne zwracają typ boolean
+- Napisy mogą być konkatenowane przy pomocy operatora +.
 
+- latc_llvm
+
+- Funkcje mogą być wzajemnie rekurencyjne
+- Jeśli zmienna nie jest jawnie inicjalizowana w momencie deklaracji, jest inicjalizowana wartością domyślną (0 dla int, "" dla string, false dla bool).
 - Wyrażenie logiczne zwracają typ boolean i są obliczane leniwie
 
 - Napisy mogą być konkatenowane przy pomocy operatora +.
@@ -32,8 +27,5 @@
 - Wewnątrz funkcji parametry formalne zachowują się jak zmienne lokalne
 - Przekazanie napisu jako parametru odbywa sie poprzez przekazanie przez wartość referencji do napisu.
 
-
-ZAŁOŻENIA:
-- zmienne i funkcje unikalne nazwy - sensowna rzecz, żeby zakładać (np. main = 4, wtf?)
 
 ROZSZERZENIA:

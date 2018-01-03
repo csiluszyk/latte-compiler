@@ -27,17 +27,18 @@ compile hFile = do
   fileContent <- hGetContents hFile
   case pProgram (tokens fileContent) of
     Bad s -> do
-      hPutStrLn stderr "BAD"
+      hPutStrLn stderr "ERROR"
       hPutStrLn stderr "Parse failed..."
       hPutStrLn stderr s
       exitFailure
     Ok prog ->
       case typeCheck prog of
-        Left err -> do
-          hPutStrLn stderr "BAD"
+        Just err -> do
+          hPutStrLn stderr "ERROR"
           hPutStrLn stderr err
           exitFailure
-        Right symTab -> do
+        Nothing -> do
           -- result :: [Value]
           -- print symTab
+          hPutStrLn stderr "OK"
           exitSuccess
