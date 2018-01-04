@@ -233,6 +233,8 @@ typeCheckExpr (Not pos expr) symTabs = case typeCheckExpr expr symTabs of
 typeCheckExpr (EMul pos expr1 _ expr2) symTabs =
   typeCheckIntExprs pos expr1 expr2 symTabs
 
+typeCheckExpr (EAdd pos expr1 (Minus _) expr2) symTabs =
+  typeCheckIntExprs pos expr1 expr2 symTabs
 typeCheckExpr (EAdd pos expr1 (Plus _) expr2) symTabs =
   case (typeCheckExpr expr1 symTabs, typeCheckExpr expr2 symTabs) of
     (Right (Int _), Right (Int _)) -> Right $ Int pos
@@ -253,27 +255,22 @@ typeCheckExpr (EAdd pos expr1 (Plus _) expr2) symTabs =
     (Left s1, Right _) -> Left $ s1 ++ [isNotErr pos "second" "int/str"]
     (Left s1, Left s2) -> Left $ s1 ++ s2
 
-typeCheckExpr (EAdd pos expr1 (Minus _) expr2) symTabs =
-  typeCheckIntExprs pos expr1 expr2 symTabs
-
+typeCheckExpr (ERel pos expr1 (EQU _) expr2) symTabs =
+  typeCheckIntBoolExprs pos expr1 expr2 symTabs
+typeCheckExpr (ERel pos expr1 (NE _) expr2) symTabs =
+  typeCheckIntBoolExprs pos expr1 expr2 symTabs
 typeCheckExpr (ERel pos expr1 _ expr2) symTabs =
   case (typeCheckExpr expr1 symTabs, typeCheckExpr expr2 symTabs) of
     (Right (Int _), Right (Int _)) -> Right $ Bool pos
     (Right (Int _), Right _) -> Left [isNotErr pos "second" "int"]
     (Right (Int _), Left s2) -> Left s2
 
-    (Right (Bool _), Right (Bool _)) -> Right $ Bool pos
-    (Right (Bool _), Right _) -> Left [isNotErr pos "second" "bool"]
-    (Right (Bool _), Left s2) -> Left s2
-
     (Right _, Right (Int _)) -> Left [isNotErr pos "first" "int"]
-    (Right _, Right (Bool _)) -> Left [isNotErr pos "first" "bool"]
-    (Right _, Right _) -> Left [isNotErr pos "both" "int/bool"]
-    (Right _, Left s2) -> Left $ isNotErr pos "first" "int/bool" : s2
+    (Right _, Right _) -> Left [isNotErr pos "both" "int"]
+    (Right _, Left s2) -> Left $ isNotErr pos "first" "int" : s2
 
     (Left s1, Right (Int _)) -> Left s1
-    (Left s1, Right (Bool _)) -> Left s1
-    (Left s1, Right _) -> Left $ s1 ++ [isNotErr pos "second" "int/bool"]
+    (Left s1, Right _) -> Left $ s1 ++ [isNotErr pos "second" "int"]
     (Left s1, Left s2) -> Left $ s1 ++ s2
 
 typeCheckExpr (EAnd pos expr1 expr2) symTabs =
@@ -312,6 +309,28 @@ typeCheckBoolExprs pos expr1 expr2 symTabs =
 
     (Left s1, Right (Bool _)) -> Left s1
     (Left s1, Right _) -> Left $ s1 ++ [isNotErr pos "second" "bool"]
+    (Left s1, Left s2) -> Left $ s1 ++ s2
+
+typeCheckIntBoolExprs::
+  Pos -> Expr Pos -> Expr Pos -> [SymTab] -> Either [String] TypePos
+typeCheckIntBoolExprs pos expr1 expr2 symTabs =
+  case (typeCheckExpr expr1 symTabs, typeCheckExpr expr2 symTabs) of
+    (Right (Int _), Right (Int _)) -> Right $ Bool pos
+    (Right (Int _), Right _) -> Left [isNotErr pos "second" "int"]
+    (Right (Int _), Left s2) -> Left s2
+
+    (Right (Bool _), Right (Bool _)) -> Right $ Bool pos
+    (Right (Bool _), Right _) -> Left [isNotErr pos "second" "bool"]
+    (Right (Bool _), Left s2) -> Left s2
+
+    (Right _, Right (Int _)) -> Left [isNotErr pos "first" "int"]
+    (Right _, Right (Bool _)) -> Left [isNotErr pos "first" "bool"]
+    (Right _, Right _) -> Left [isNotErr pos "both" "int/bool"]
+    (Right _, Left s2) -> Left $ isNotErr pos "first" "int/bool" : s2
+
+    (Left s1, Right (Int _)) -> Left s1
+    (Left s1, Right (Bool _)) -> Left s1
+    (Left s1, Right _) -> Left $ s1 ++ [isNotErr pos "second" "int/bool"]
     (Left s1, Left s2) -> Left $ s1 ++ s2
 
 
