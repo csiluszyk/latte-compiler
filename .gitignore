@@ -3,6 +3,7 @@
 *.swp
 *~
 .idea/
+.HTF/
 .stack-work/
 dist/
 latte.iml

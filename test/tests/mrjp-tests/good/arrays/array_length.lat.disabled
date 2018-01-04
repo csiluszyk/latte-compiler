@@ -1,0 +1,6 @@
+// Author: Tomasz Wysocki 277696
+// jl264898: Disabled, array by expression not supported
+int main() {
+    printInt((new int[1]).length);
+    return 0;
+}
