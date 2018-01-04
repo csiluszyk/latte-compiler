@@ -1,12 +1,8 @@
 type_check:
-- Funkcje muszą mieć unikalne nazwy
 - Funkcje o typie wyniku innym niż void muszą zwracać wartość za pomocą instrukcji return
-- użycie funkcji może występować przed jej definicją
-- Zmienne zadeklarowane w bloku nie są widoczne poza nim i przesłaniają zmienne o tej samej nazwie spoza bloku.
-- W obrębie bloku zmienne muszą mieć unikalne nazwy.
-- Nie ma konwersji pomiedzy typami.
-- Wyrażenie logiczne zwracają typ boolean
 - Napisy mogą być konkatenowane przy pomocy operatora +.
+
+- każda funkcja ma return, unreachable
 
 - latc_llvm
 
@@ -26,6 +22,8 @@ type_check:
 - Wszystkie parametry są przekazywane przez wartość.
 - Wewnątrz funkcji parametry formalne zachowują się jak zmienne lokalne
 - Przekazanie napisu jako parametru odbywa sie poprzez przekazanie przez wartość referencji do napisu.
+
+- clean stack.yaml
 
 
 ROZSZERZENIA:
