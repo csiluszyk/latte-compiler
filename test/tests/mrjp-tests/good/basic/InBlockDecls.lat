@@ -1,0 +1,19 @@
+// check generated llvm if all allocs are at the top of entry
+int main() {
+   int i = 0;
+   int j = 1;
+   while (i < 10) {
+      i++;
+      j = j + i;
+      int j = i + j;
+      printInt(j);
+   }
+   if (i == j) {
+      int z = i + j;
+      printInt(z);
+   } else {
+      int z = i - j;
+      printInt(z);
+   }
+   return 0;
+}

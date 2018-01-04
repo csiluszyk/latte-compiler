@@ -1,0 +1,9 @@
+// Check if there is no name conflict
+int concat () {
+   return 0;
+}
+
+int main() {
+   int x = concat();
+   return 0;
+}

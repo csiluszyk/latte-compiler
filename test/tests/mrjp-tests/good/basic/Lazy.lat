@@ -1,0 +1,60 @@
+boolean yes(boolean b) {
+   printString("LAZY_OK");
+   return b;
+}
+
+boolean yes_() {
+   printString("LAZY_OK");
+   return true;
+}
+
+boolean no(boolean b) {
+   printString("LAZY_PROBLEM");
+   return b;
+}
+
+boolean no_() {
+   printString("LAZY_PROBLEM");
+   return true;
+}
+
+void testTrue(boolean b) {
+   if (b) printString("OK");
+   else printString("ERROR");
+}
+
+void testFalse(boolean b) {
+   if (!b) printString("OK");
+   else printString("ERROR");
+}
+
+int main() {
+
+   testTrue(true && true);
+   testFalse(true && false);
+   testFalse(false && true);
+   testFalse(false && false);
+
+   testTrue(true || true);
+   testTrue(true || false);
+   testTrue(false || true);
+   testFalse(false || false);
+
+   yes(true)   && yes_();
+   yes(false)  && no_();
+   yes(true)   || no_();
+   yes(false)  || yes_();
+
+   yes(true)   && yes(true)   && yes_();
+
+   yes(false)  && no_() && no_();
+   yes(true)   || no_() || no_();
+
+   (yes(false) && no_()) || yes_();
+   (yes(true)  || no_()) || no_();
+
+   true && ((yes(false) && no_()));
+   false && ((no_() && no_()));
+
+   return 0;
+}
