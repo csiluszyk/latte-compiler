@@ -1,11 +1,9 @@
 module TypeCheckLatte where
 
-import Control.Monad
-import Control.Monad.Error
-import qualified Data.Map as M
+import Data.Int
 import Data.List
+import qualified Data.Map as M
 import Data.Maybe
-import Control.Monad.State
 
 import AbsLatte
 
@@ -100,7 +98,7 @@ typeCheckStmt :: Stmt Pos -> [SymTab] -> ([SymTab], [String])
 typeCheckStmt (Empty pos) symTabs = (symTabs, [])
 
 typeCheckStmt (BStmt pos block) symTabs = (symTabs, errs)
-  where errs = typeCheckBlock block symTabs
+  where errs = typeCheckBlock block (M.empty : symTabs)
 
 typeCheckStmt (Decl pos (Void _) _) symTabs =
   (symTabs, [showPos pos ++ "variables cannot be type of void"])
@@ -141,15 +139,18 @@ typeCheckStmt (Decr pos ident) symTabs = case getType ident symTabs of
 
 typeCheckStmt (Ret pos expr) symTabs =
   let retT = fromJust $ getType ret symTabs
-  in case typeCheckExpr expr symTabs of
-    Right t ->
-      if cmpTypes retT t then (symTabs, [])
-      else (symTabs, [showPos pos ++ "incompatible return type"])
-    Left l -> (symTabs, l)
+  in case retT of
+    Void _ -> (symTabs, [showPos pos ++
+      "cannot result a value from a method with void result type"])
+    _ -> case typeCheckExpr expr symTabs of
+      Right t ->
+        if cmpTypes retT t then (symTabs, [])
+        else (symTabs, [showPos pos ++ "incompatible return type"])
+      Left l -> (symTabs, l)
 
 typeCheckStmt (VRet pos) symTabs = case fromJust $ getType ret symTabs of
   Void _ -> (symTabs, [])
-  _ -> (symTabs, [showPos pos ++ "incompatible return type"])
+  _ -> (symTabs, [showPos pos ++ "missing return value"])
 
 typeCheckStmt (Cond pos expr stmt) symTabs =
   let (_, stmtErrs) = typeCheckStmt stmt (M.empty : symTabs)
@@ -189,29 +190,33 @@ typeCheckExpr (EVar pos ident) symTabs = case getType ident symTabs of
   Just t -> Right t
   Nothing -> Left [notFoundErr pos "variable" ident]
 
-typeCheckExpr (ELitInt pos _) symTabs = Right $ Int pos
+typeCheckExpr (ELitInt pos i) symTabs
+  | i < fromIntegral (minBound :: Int32) =
+    Left [showPos pos ++ "integer number too small"]
+  | i > fromIntegral (maxBound :: Int32) =
+    Left [showPos pos ++ "integer number too large"]
+  | otherwise = Right $ Int pos
 
 typeCheckExpr (ELitTrue pos) symTabs = Right $ Bool pos
 
 typeCheckExpr (ELitFalse pos) symTabs = Right $ Bool pos
 
 typeCheckExpr (EApp pos ident exprs) symTabs = case getType ident symTabs of
-  Just (Fun _ _ types) -> typeCheckFunArgs types exprs pos symTabs
+  Just (Fun _ rType types)
+    | length types > length exprs ->
+      Left [showPos pos ++ "too few argumetns passed"]
+    | length types < length exprs ->
+      Left [showPos pos ++ "too many argumetns passed"]
+    | otherwise -> case foldr foldCmpTypes [] (zip types exprs) of
+      [] -> Right rType
+      errs -> Left errs
+    where foldCmpTypes (t1, expr) errs =
+            case typeCheckExpr expr symTabs of
+              Right t2 -> if cmpTypes t1 t2 then errs
+                          else nonMatchingTypesErr pos : errs
+              Left l -> l ++ errs
   Just t -> Left [showPos pos ++ show ident ++ "is not a function"]
   Nothing -> Left [notFoundErr pos "function" ident]
-  where typeCheckFunArgs types exprs pos symTabs
-          | length types > length exprs =
-            Left [showPos pos ++ "too few argumetns passed"]
-          | length types < length exprs =
-            Left [showPos pos ++ "too many argumetns passed"]
-          | otherwise = case foldr foldCmpTypes [] (zip types exprs) of
-            [] -> Right $ fromJust $ getType ret symTabs
-            errs -> Left errs
-          where foldCmpTypes (t1, expr) errs =
-                  case typeCheckExpr expr symTabs of
-                    Right t2 -> if cmpTypes t1 t2 then errs
-                                else nonMatchingTypesErr pos : errs
-                    Left l -> l ++ errs
 
 typeCheckExpr (EString pos _) symTabs = Right $ Str pos
 
@@ -252,7 +257,24 @@ typeCheckExpr (EAdd pos expr1 (Minus _) expr2) symTabs =
   typeCheckIntExprs pos expr1 expr2 symTabs
 
 typeCheckExpr (ERel pos expr1 _ expr2) symTabs =
-  typeCheckBoolExprs pos expr1 expr2 symTabs
+  case (typeCheckExpr expr1 symTabs, typeCheckExpr expr2 symTabs) of
+    (Right (Int _), Right (Int _)) -> Right $ Bool pos
+    (Right (Int _), Right _) -> Left [isNotErr pos "second" "int"]
+    (Right (Int _), Left s2) -> Left s2
+
+    (Right (Bool _), Right (Bool _)) -> Right $ Bool pos
+    (Right (Bool _), Right _) -> Left [isNotErr pos "second" "bool"]
+    (Right (Bool _), Left s2) -> Left s2
+
+    (Right _, Right (Int _)) -> Left [isNotErr pos "first" "int"]
+    (Right _, Right (Bool _)) -> Left [isNotErr pos "first" "bool"]
+    (Right _, Right _) -> Left [isNotErr pos "both" "int/bool"]
+    (Right _, Left s2) -> Left $ isNotErr pos "first" "int/bool" : s2
+
+    (Left s1, Right (Int _)) -> Left s1
+    (Left s1, Right (Bool _)) -> Left s1
+    (Left s1, Right _) -> Left $ s1 ++ [isNotErr pos "second" "int/bool"]
+    (Left s1, Left s2) -> Left $ s1 ++ s2
 
 typeCheckExpr (EAnd pos expr1 expr2) symTabs =
   typeCheckBoolExprs pos expr1 expr2 symTabs
@@ -325,7 +347,7 @@ cannotBeVoidErr pos ident =
 
 notFoundErr :: Pos -> String -> Ident -> String
 notFoundErr pos typeS ident =
-  showPos pos ++ typeS ++ show ident ++ " not found"
+  showPos pos ++ typeS ++ " " ++ show ident ++ " not found"
 
 isNotErr :: Pos -> String -> String -> String
 isNotErr pos posS typeS =
