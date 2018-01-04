@@ -1,0 +1,41 @@
+int main() {
+    if (false) {
+        {
+            return 4;
+        }
+    } else {
+        {
+            return 2;
+        }
+    }
+}
+
+void f() {
+    if (false)
+        return
+    else
+        return
+}
+
+int g() {
+    {
+        {
+            {
+                return 4;
+            }
+        }
+    }
+}
+
+int h() {
+    {
+        {
+            {
+                if (true) {
+                    return 4;
+                } else
+                    return 2;
+            }
+        }
+    }
+}
