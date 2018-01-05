@@ -41,11 +41,11 @@ builtins = [(Ident "printInt",
 typeCheck :: Program Pos -> Maybe String
 typeCheck (Program pos topDefs) =
   let (globals, topDefsErrs) = typeCheckTopDefs topDefs
-    in let defsErrs = typeCheckDefs topDefs globals
-      in let errs = topDefsErrs ++ defsErrs
-        in case errs of
-          [] -> Nothing
-          l -> Just $ intercalate "\n" l
+  in let defsErrs = typeCheckDefs topDefs globals
+  in let errs = topDefsErrs ++ defsErrs
+  in case errs of
+    [] -> Nothing
+    l -> Just $ intercalate "\n" ((show (length l) ++ " errors found:") : l)
 
 typeCheckTopDefs :: [TopDef Pos] -> (SymTab, [String])
 typeCheckTopDefs topDefs = (globals, mainErrs ++ reverse errs)
@@ -76,16 +76,75 @@ typeCheckTopDefs topDefs = (globals, mainErrs ++ reverse errs)
 typeCheckDefs :: [TopDef Pos] -> SymTab -> [String]
 typeCheckDefs topDefs globals = foldr foldTypeCheckDef [] topDefs
   where
-    foldTypeCheckDef (FnDef _ rType _ fArgs block) errs =
-      let args = map (\(Arg _ aType ident) -> (ident, aType)) fArgs
-        in let bScope = M.fromList $ (ret, rType) : args
-           in typeCheckBlock block [bScope, globals] ++ errs
+    foldTypeCheckDef (FnDef pos rType _ fArgs block@(Block _ stmts)) errs =
+      typeCheckErrs ++ unreachErrs ++ isTerminatingErrs ++ errs
+      where
+        args = map (\(Arg _ aType ident) -> (ident, aType)) fArgs
+        bScope = M.fromList $ (ret, rType) : args
+        typeCheckErrs = typeCheckBlock block [bScope, globals]
+        (isTerminating, unreachs) = typeCheckRetStmts stmts
+        unreachErrs = map unreachErr unreachs
+        isTerminatingErrs = case rType of
+          Void _ -> []
+          _ | isTerminating -> []
+            | otherwise -> [showPos pos ++ "missing return statement"]
+
+
+-- DFS AST to determine if function returns and which stmts are unreachable.
+typeCheckRetStmts :: [Stmt Pos] -> (Bool, [Stmt Pos])
+typeCheckRetStmts [] = (False, [])
+typeCheckRetStmts (VRet {} : stmts) = (True, stmts)
+typeCheckRetStmts (Ret {} : stmts) = (True, stmts)
+
+typeCheckRetStmts (CondElse _ (ELitTrue _) stmtT stmtF : stmts)
+  | tIsTerminating = (True, tUnreachs ++ fUnreachs ++ stmts)
+  | otherwise = (isTerminating, tUnreachs ++ fUnreachs ++ unreachs)
+  where (tIsTerminating, tUnreachs) = typeCheckRetStmts [stmtT]
+        (_, fUnreachs) = typeCheckRetStmts [stmtF]
+        (isTerminating, unreachs) = typeCheckRetStmts stmts
+typeCheckRetStmts (CondElse _ (ELitFalse _) stmtT stmtF : stmts)
+  | fIsTerminating = (True, tUnreachs ++ fUnreachs ++ stmts)
+  | otherwise = (isTerminating, tUnreachs ++ fUnreachs ++ unreachs)
+  where (_, tUnreachs) = typeCheckRetStmts [stmtT]
+        (fIsTerminating, fUnreachs) = typeCheckRetStmts [stmtF]
+        (isTerminating, unreachs) = typeCheckRetStmts stmts
+typeCheckRetStmts (CondElse _ _ stmtT stmtF : stmts)
+  | tIsTerminating && fIsTerminating = (True, tUnreachs ++ fUnreachs ++ stmts)
+  | otherwise = (isTerminating, tUnreachs ++ fUnreachs ++ unreachs)
+  where (tIsTerminating, tUnreachs) = typeCheckRetStmts [stmtT]
+        (fIsTerminating, fUnreachs) = typeCheckRetStmts [stmtF]
+        (isTerminating, unreachs) = typeCheckRetStmts stmts
+
+typeCheckRetStmts (BStmt _ (Block _ bStmts) : stmts)
+  | bIsTerminating = (True, bUnreachs ++ stmts)
+  | otherwise = (isTerminating, bUnreachs ++ unreachs)
+  where (bIsTerminating, bUnreachs) = typeCheckRetStmts bStmts
+        (isTerminating, unreachs) = typeCheckRetStmts stmts
+
+typeCheckRetStmts (Cond _ (ELitTrue _) stmt : stmts)
+  | condIsTerminating = (True, condUnreachs ++ stmts)
+  | otherwise = (isTerminating, condUnreachs ++ unreachs)
+  where (condIsTerminating, condUnreachs) = typeCheckRetStmts [stmt]
+        (isTerminating, unreachs) = typeCheckRetStmts stmts
+typeCheckRetStmts (Cond _ _ stmt : stmts) = typeCheckRetCond stmt stmts
+
+typeCheckRetStmts (While _ (ELitTrue _) stmt : stmts) =
+  (condIsTerminating, condUnreachs ++ stmts)
+  where (condIsTerminating, condUnreachs) = typeCheckRetStmts [stmt]
+typeCheckRetStmts (While _ _ stmt : stmts) = typeCheckRetCond stmt stmts
+typeCheckRetStmts (_ : stmts) = typeCheckRetStmts stmts
+
+typeCheckRetCond :: Stmt Pos -> [Stmt Pos] -> (Bool, [Stmt Pos])
+typeCheckRetCond stmt stmts = (isTerminating, condUnreachs ++ unreachs)
+  where (_, condUnreachs) = typeCheckRetStmts [stmt]
+        (isTerminating, unreachs) = typeCheckRetStmts stmts
+
 
 -- [SymTabs] - list of variables declared in outer scopes;
 --             last element - globals.
 -- Returns type errors in given block.
 typeCheckBlock :: Block Pos -> [SymTab] -> [String]
-typeCheckBlock (Block pos stmts) symTabs =
+typeCheckBlock (Block _ stmts) symTabs =
   snd $ foldl foldTypeCheckStmt (symTabs, []) stmts
   where
     foldTypeCheckStmt (symTabs, errs) stmt = (newSymTabs, errs ++ newErrs)
@@ -256,9 +315,9 @@ typeCheckExpr (EAdd pos expr1 (Plus _) expr2) symTabs =
     (Left s1, Left s2) -> Left $ s1 ++ s2
 
 typeCheckExpr (ERel pos expr1 (EQU _) expr2) symTabs =
-  typeCheckIntBoolExprs pos expr1 expr2 symTabs
+  typeCheckTypeExprs pos expr1 expr2 symTabs
 typeCheckExpr (ERel pos expr1 (NE _) expr2) symTabs =
-  typeCheckIntBoolExprs pos expr1 expr2 symTabs
+  typeCheckTypeExprs pos expr1 expr2 symTabs
 typeCheckExpr (ERel pos expr1 _ expr2) symTabs =
   case (typeCheckExpr expr1 symTabs, typeCheckExpr expr2 symTabs) of
     (Right (Int _), Right (Int _)) -> Right $ Bool pos
@@ -311,26 +370,14 @@ typeCheckBoolExprs pos expr1 expr2 symTabs =
     (Left s1, Right _) -> Left $ s1 ++ [isNotErr pos "second" "bool"]
     (Left s1, Left s2) -> Left $ s1 ++ s2
 
-typeCheckIntBoolExprs::
+typeCheckTypeExprs::
   Pos -> Expr Pos -> Expr Pos -> [SymTab] -> Either [String] TypePos
-typeCheckIntBoolExprs pos expr1 expr2 symTabs =
+typeCheckTypeExprs pos expr1 expr2 symTabs =
   case (typeCheckExpr expr1 symTabs, typeCheckExpr expr2 symTabs) of
-    (Right (Int _), Right (Int _)) -> Right $ Bool pos
-    (Right (Int _), Right _) -> Left [isNotErr pos "second" "int"]
-    (Right (Int _), Left s2) -> Left s2
-
-    (Right (Bool _), Right (Bool _)) -> Right $ Bool pos
-    (Right (Bool _), Right _) -> Left [isNotErr pos "second" "bool"]
-    (Right (Bool _), Left s2) -> Left s2
-
-    (Right _, Right (Int _)) -> Left [isNotErr pos "first" "int"]
-    (Right _, Right (Bool _)) -> Left [isNotErr pos "first" "bool"]
-    (Right _, Right _) -> Left [isNotErr pos "both" "int/bool"]
-    (Right _, Left s2) -> Left $ isNotErr pos "first" "int/bool" : s2
-
-    (Left s1, Right (Int _)) -> Left s1
-    (Left s1, Right (Bool _)) -> Left s1
-    (Left s1, Right _) -> Left $ s1 ++ [isNotErr pos "second" "int/bool"]
+    (Right t1, Right t2) | cmpTypes t1 t2 -> Right $ Bool pos
+                         | otherwise -> Left [nonMatchingTypesErr pos]
+    (Right _, Left s2) -> Left s2
+    (Left s1, Right _) -> Left s1
     (Left s1, Left s2) -> Left $ s1 ++ s2
 
 
@@ -354,6 +401,20 @@ cmpTypes (Str _) (Str _) = True
 cmpTypes (Void _) (Void _) = True
 cmpTypes _ _ = False
 
+getPosStmt :: Stmt Pos -> Pos
+getPosStmt (Empty pos) = pos
+getPosStmt (BStmt pos _) = pos
+getPosStmt (Decl pos _ _) = pos
+getPosStmt (Ass pos _ _) = pos
+getPosStmt (Incr pos  _) = pos
+getPosStmt (Decr pos  _) = pos
+getPosStmt (Ret pos _) = pos
+getPosStmt (VRet pos) = pos
+getPosStmt (Cond pos _ _) = pos
+getPosStmt (CondElse pos _ _ _) = pos
+getPosStmt (While pos _ _) = pos
+getPosStmt (SExp pos _) = pos
+
 
 -- Errors
 
@@ -374,3 +435,6 @@ isNotErr pos posS typeS =
 
 nonMatchingTypesErr :: Pos -> String
 nonMatchingTypesErr pos = showPos pos ++ "types don't match"
+
+unreachErr :: Stmt Pos -> String
+unreachErr stmt = showPos (getPosStmt stmt) ++ "is unreachable"

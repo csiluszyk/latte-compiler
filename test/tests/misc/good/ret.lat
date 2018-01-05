@@ -12,9 +12,9 @@ int main() {
 
 void f() {
     if (false)
-        return
+        return;
     else
-        return
+        return;
 }
 
 int g() {
