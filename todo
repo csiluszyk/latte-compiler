@@ -1,15 +1,6 @@
-type_check:
-- Funkcje o typie wyniku innym niż void muszą zwracać wartość za pomocą instrukcji return
-- Napisy mogą być konkatenowane przy pomocy operatora +.
-
-- każda funkcja ma return, unreachable
-
-- latc_llvm
-
 - Funkcje mogą być wzajemnie rekurencyjne
 - Jeśli zmienna nie jest jawnie inicjalizowana w momencie deklaracji, jest inicjalizowana wartością domyślną (0 dla int, "" dla string, false dla bool).
 - Wyrażenie logiczne zwracają typ boolean i są obliczane leniwie
-
 - Napisy mogą być konkatenowane przy pomocy operatora +.
 
 - Są dostępne predefiniowane funkcje:
@@ -25,5 +16,8 @@ type_check:
 
 - change stack path in Makefile
 
+OPTYMALIZACJE
+- nie usuwać wywołań funkcji - może mieć side effects
 
 ROZSZERZENIA:
+

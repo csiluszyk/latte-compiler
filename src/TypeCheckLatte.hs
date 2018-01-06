@@ -6,9 +6,8 @@ import qualified Data.Map as M
 import Data.Maybe
 
 import AbsLatte
+import UtilsLatte
 
-type Pos = Maybe (Int, Int)
-type TypePos = Type Pos
 
 type SymTab = M.Map Ident TypePos
 
