@@ -7,3 +7,4 @@
 .stack-work/
 dist/
 latte.iml
+latc_llvm

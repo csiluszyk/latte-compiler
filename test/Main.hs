@@ -13,7 +13,7 @@ main = sequence [frontendTestsBB] >>= htfMain
 frontendTestsBB :: IO TestSuite
 frontendTestsBB =
    liftM (makeTestSuite "Frontend Black Box Tests") $
-   blackBoxTests "test/tests" "./latc" ".lat" defaultBBTArgs
+   blackBoxTests "test/tests" "./latc_llvm" ".lat" defaultBBTArgs
 
 {-llvmTestsBB :: IO TestSuite-}
 {-llvmTestsBB =-}

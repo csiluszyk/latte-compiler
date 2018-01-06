@@ -1,14 +1,18 @@
+STACK=stack
+# STACK=/home/students/inf/PUBLIC/MRJP/Stack/stack
+
 all:
-	stack install
+	$(STACK) setup
+	$(STACK) install
 
 test:
-	stack test
+	$(STACK) test
 
 testclean:
 	find test/tests -regex '.*.\(ll\|bc\)' -type f -delete
 
 clean:
-	stack clean
-	-rm -rf latte
+	$(STACK) clean
+	-rm -rf latc_llvm
 
 .PHONY: test testclean clean

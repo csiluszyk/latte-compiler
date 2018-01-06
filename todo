@@ -23,7 +23,7 @@ type_check:
 - Wewnątrz funkcji parametry formalne zachowują się jak zmienne lokalne
 - Przekazanie napisu jako parametru odbywa sie poprzez przekazanie przez wartość referencji do napisu.
 
-- clean stack.yaml
+- change stack path in Makefile
 
 
 ROZSZERZENIA:
