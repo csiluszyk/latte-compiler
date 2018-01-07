@@ -34,11 +34,12 @@ data Inst
   | Icmp Loc String Value Value
   deriving (Eq, Ord, Read)
 
-type BasicBlock = BasicBlock Label [Inst]
+data BasicBlock = BasicBlock Label [Inst]
 
 -- todo: str cmp, str add -> functions
 
 type SymTab = M.Map Ident (Loc, IrType)
+type StrMap = M.Map String Loc
 
 emptyLoc :: Loc
 emptyLoc = ""
@@ -50,26 +51,72 @@ builtins = [(Ident "printInt", (emptyLoc, IrVoid)),
             (Ident "readInt", (emptyLoc, IrInt)),
             (Ident "readString", (emptyLoc, IrStr))]
 
-type GenIrM a = WriterT [Inst] (StateT Int (Reader SymTab)) a
+type GenIrM a = WriterT [Inst] (StateT Int (Reader (SymTab, StrMap))) a
 
-runGenIrM :: [Stmt Pos] -> Int -> SymTab -> [Inst]
-runGenIrM stmts i symTab =
-  sndfst $ runReader (runStateT (runWriterT (generateIrStmts stmts)) i) symTab
-  where sndfst = snd . fst  -- gives x from: ((_, x), _)
+runGenIrM :: [Stmt Pos] -> Int -> SymTab -> StrMap -> [Inst]
+runGenIrM stmts i symTab m = snd $ fst r where
+  r = runReader (runStateT (runWriterT (generateIrStmts stmts)) i) (symTab, m)
 
 generateIr :: Program Pos -> [[Inst]]
 generateIr (Program _ topDefs) = map runGenIrTopDef topDefs
-  where foldPutTopDefs globals (FnDef _ fRet fName _ _) =
-          M.insert fName (emptyLoc, toIrType fRet) globals
-        globals = foldl foldPutTopDefs (M.fromList builtins) topDefs
-        runGenIrTopDef (FnDef _ _ _ args (Block _ stmts)) =
-          runGenIrM stmts 0 (foldl insertArgs globals args)
-          where insertArgs symTab (Arg _ aType ident) =  -- TODO: local, no emptyLoc
-                  M.insert ident (emptyLoc, toIrType aType) globals
+  where
+    foldPutTopDefs globals (FnDef _ fRet fName _ _) =
+      M.insert fName (emptyLoc, toIrType fRet) globals
+    globals = foldl foldPutTopDefs (M.fromList builtins) topDefs
+    strLit = "" : concatMap getStrLiteralsTopDef topDefs
+    strLitLoc = map (\(s, i) -> (s, "@.str." ++ show i)) $ zip strLit [0..]
+    strLitMap = M.fromList strLitLoc
+    runGenIrTopDef (FnDef _ _ _ args (Block _ stmts)) =
+      runGenIrM stmts 0 (foldl insertArgs globals args) strLitMap
+      where insertArgs symTab (Arg _ aType ident) =  -- TODO: local, no emptyLoc
+              M.insert ident (emptyLoc, toIrType aType) globals
+
+getStrLiteralsTopDef :: TopDef Pos -> [String]
+getStrLiteralsTopDef (FnDef _ _ _ _ (Block _ stmts)) =
+  getStrLiteralsStmts stmts
+
+getStrLiteralsStmts :: [Stmt Pos] -> [String]
+getStrLiteralsStmts = concatMap getStrLiteralsStmt
+
+getStrLiteralsStmt :: Stmt Pos -> [String]
+getStrLiteralsStmt (BStmt _ (Block _ stmts)) = getStrLiteralsStmts stmts
+getStrLiteralsStmt (Decl _ _ items) = concatMap getStrLiteralsItem items
+getStrLiteralsStmt (Ass _ _ e) = getStrLiteralsExp e
+getStrLiteralsStmt (Ret _ e) = getStrLiteralsExp e
+getStrLiteralsStmt (Cond _ e stmt) =
+  getStrLiteralsExp e ++ getStrLiteralsStmt stmt
+getStrLiteralsStmt (CondElse _ e stmtT stmtF) =
+  getStrLiteralsExp e ++ getStrLiteralsStmt stmtT ++ getStrLiteralsStmt stmtF
+getStrLiteralsStmt (While _ e stmt) =
+  getStrLiteralsExp e ++ getStrLiteralsStmt stmt
+getStrLiteralsStmt (SExp _ e) = getStrLiteralsExp e
+getStrLiteralsStmt _ = []
+
+getStrLiteralsItem :: Item Pos -> [String]
+getStrLiteralsItem (Init _ _ e) = getStrLiteralsExp e
+getStrLiteralsItem _ = []
+
+getStrLiteralsExp :: Expr Pos -> [String]
+getStrLiteralsExp (EApp _ _ es) = concatMap getStrLiteralsExp es
+getStrLiteralsExp (EString _ s) = [s]
+getStrLiteralsExp (Neg _ e) = getStrLiteralsExp e
+getStrLiteralsExp (Not _ e) = getStrLiteralsExp e
+getStrLiteralsExp (EMul _ e1 _ e2) =
+  getStrLiteralsExp e1 ++ getStrLiteralsExp e2
+getStrLiteralsExp (EAdd _ e1 _ e2) =
+  getStrLiteralsExp e1 ++ getStrLiteralsExp e2
+getStrLiteralsExp (ERel _ e1 _ e2) =
+  getStrLiteralsExp e1 ++ getStrLiteralsExp e2
+getStrLiteralsExp (EAnd _ e1 e2) =
+  getStrLiteralsExp e1 ++ getStrLiteralsExp e2
+getStrLiteralsExp (EOr _ e1 e2) =
+  getStrLiteralsExp e1 ++ getStrLiteralsExp e2
+getStrLiteralsExp _ = []
 
 generateIrStmts :: [Stmt Pos] -> GenIrM ()
 generateIrStmts  = mapM_ generateIrStmt
 
+-- TODO: return to stmts
 generateIrStmt :: Stmt Pos -> GenIrM ()
 
 generateIrStmt (Empty _) = return ()
@@ -91,12 +138,12 @@ generateIrStmt (Ass _ ident e) = undefined --do
 -- TODO: what if Lit?
 
 generateIrStmt (Incr _ ident) = do
-  symTab <- ask
+  (symTab, _) <- ask
   let (loc, irType) = fromJust $ M.lookup ident symTab
   tell [Add loc (Reg loc irType) (IntLit 1)]
 
 generateIrStmt (Decr _ ident) = do
-  symTab <- ask
+  (symTab, _) <- ask
   let (loc, irType) = fromJust $ M.lookup ident symTab
   tell [Sub loc (Reg loc irType) (IntLit 1)]
 
@@ -118,7 +165,7 @@ generateIrStmt (SExp _ e) = do
 generateIrExp :: Expr Pos -> GenIrM Value
 
 generateIrExp (EVar _ ident) = do
-  symTab <- ask
+  (symTab, _) <- ask
   let (loc, irType) = fromJust $ M.lookup ident symTab
   return $ Reg loc irType
 
@@ -128,7 +175,11 @@ generateIrExp (ELitFalse _) = return $ BoolLit False
 
 generateIrExp (EApp _ ident es) = undefined -- TODO
 
-generateIrExp (EString _ str) = undefined -- TODO
+generateIrExp (EString _ str) = do
+  (_, strLitMap) <- ask
+  let loc = fromJust $ M.lookup str strLitMap
+  tell [StrLit loc str]
+  return $ Reg loc IrStr
 
 generateIrExp (Neg _ e) = undefined -- TODO
 

@@ -4,6 +4,8 @@
 - Wyrażenie logiczne zwracają typ boolean i są obliczane leniwie
 - Napisy mogą być konkatenowane przy pomocy operatora +.
 
+napisy -> + '\0' na końcu, +1 do length
+
 - Są dostępne predefiniowane funkcje:
     void printInt(int)
     void printString(string)
