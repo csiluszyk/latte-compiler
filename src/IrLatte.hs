@@ -116,18 +116,18 @@ getStrLiteralsExp (EOr _ e1 e2) =
 getStrLiteralsExp _ = []
 
 generateIrStmts :: [Stmt Pos] -> GenIrM ()
-generateIrStmts  = mapM_ generateIrStmt
 
--- TODO: return to stmts
-generateIrStmt :: Stmt Pos -> GenIrM ()
+generateIrStmts (Empty _ : stmts) = generateIrStmts stmts
 
-generateIrStmt (Empty _) = return ()
+generateIrStmts (BStmt _ (Block _ bStmts) : stmts) = do
+  generateIrStmts bStmts
+  generateIrStmts stmts
 
-generateIrStmt (BStmt _ (Block _ bStmts)) = generateIrStmts bStmts
+generateIrStmts (Decl _ dType items : stmts) = do
+  generateIrStmts stmts
 
-generateIrStmt (Decl _ dType items) = undefined -- TODO
-
-generateIrStmt (Ass _ ident e) = undefined --do
+generateIrStmts (Ass _ ident e : stmts) = do  -- todo
+  generateIrStmts stmts
 --  symTab <- ask
 --  let (loc, irType) = fromJust $ M.lookup ident symTab
 --  val <- generateIrExp e
@@ -139,30 +139,38 @@ generateIrStmt (Ass _ ident e) = undefined --do
 -- y = x;
 -- TODO: what if Lit?
 
-generateIrStmt (Incr _ ident) = do
+generateIrStmts (Incr _ ident : stmts) = do
   (symTab, _) <- ask
   let (loc, irType) = fromJust $ M.lookup ident symTab
   tell [Add loc (Reg loc irType) (IntLit 1)]
+  generateIrStmts stmts
 
-generateIrStmt (Decr _ ident) = do
+generateIrStmts (Decr _ ident : stmts) = do
   (symTab, _) <- ask
   let (loc, irType) = fromJust $ M.lookup ident symTab
   tell [Sub loc (Reg loc irType) (IntLit 1)]
+  generateIrStmts stmts
 
-generateIrStmt (Ret _ e) = do
+generateIrStmts (Ret _ e : stmts) = do
   val <- generateIrExp e
   tell [RetInst val]
-generateIrStmt (VRet _) = tell [VRetInst]
+  generateIrStmts stmts
+generateIrStmts (VRet _ : stmts) = do
+  tell [VRetInst]
+  generateIrStmts stmts
 
-generateIrStmt (Cond _ e stmt) = undefined -- TODO
+generateIrStmts (Cond _ e stmt : stmts) = do
+  generateIrStmts stmts
 
-generateIrStmt (CondElse _ e stmtT stmtF) = undefined -- TODO
+generateIrStmts (CondElse _ e stmtT stmtF : stmts) = do  -- TODO
+  generateIrStmts stmts
 
-generateIrStmt (While _ e stmt) = undefined -- TODO
+generateIrStmts (While _ e stmt : stmts) = do  -- TODO
+  generateIrStmts stmts
 
-generateIrStmt (SExp _ e) = do
+generateIrStmts (SExp _ e : stmts) = do
   generateIrExp e
-  return ()
+  generateIrStmts stmts
 
 generateIrExp :: Expr Pos -> GenIrM Value
 
