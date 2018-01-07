@@ -67,9 +67,11 @@ generateIr (Program _ topDefs) = map runGenIrTopDef topDefs
     strLitLoc = map (\(s, i) -> (s, "@.str." ++ show i)) $ zip strLit [0..]
     strLitMap = M.fromList strLitLoc
     runGenIrTopDef (FnDef _ _ _ args (Block _ stmts)) =
-      runGenIrM stmts 0 (foldl insertArgs globals args) strLitMap
-      where insertArgs symTab (Arg _ aType ident) =  -- TODO: local, no emptyLoc
-              M.insert ident (emptyLoc, toIrType aType) globals
+      runGenIrM stmts (n - 1) locals strLitMap
+      where
+        (locals, n) = foldl insertArgs (globals, 0) args
+        insertArgs (symTab, loc) (Arg _ aType ident) =
+          (M.insert ident (getLocalLoc loc, toIrType aType) globals, loc + 1)
 
 getStrLiteralsTopDef :: TopDef Pos -> [String]
 getStrLiteralsTopDef (FnDef _ _ _ _ (Block _ stmts)) =
@@ -226,6 +228,9 @@ generateIrExp (EOr _ e1 e2) = undefined -- TODO
 -- Returns next registry location.
 getLoc :: Int -> Loc
 getLoc n = '%' : show (n + 1)
+
+getLocalLoc :: Int -> Loc
+getLocalLoc n = "%l" ++ show n
 
 toIrType :: TypePos -> IrType
 toIrType (Int _) = IrInt
