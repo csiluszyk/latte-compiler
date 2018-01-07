@@ -34,7 +34,7 @@ data Inst
   | Icmp Loc String Value Value
   deriving (Eq, Ord, Read)
 
-type SimpleBlock = [Inst]
+type BasicBlock = BasicBlock Label [Inst]
 
 -- todo: str cmp, str add -> functions
 
@@ -57,21 +57,18 @@ runGenIrM stmts i symTab =
   sndfst $ runReader (runStateT (runWriterT (generateIrStmts stmts)) i) symTab
   where sndfst = snd . fst  -- gives x from: ((_, x), _)
 
-generateIr :: Program Pos -> [SimpleBlock]
+generateIr :: Program Pos -> [[Inst]]
 generateIr (Program _ topDefs) = map runGenIrTopDef topDefs
   where foldPutTopDefs globals (FnDef _ fRet fName _ _) =
           M.insert fName (emptyLoc, toIrType fRet) globals
         globals = foldl foldPutTopDefs (M.fromList builtins) topDefs
         runGenIrTopDef (FnDef _ _ _ args (Block _ stmts)) =
           runGenIrM stmts 0 (foldl insertArgs globals args)
-          where insertArgs symTab (Arg _ aType ident) =
+          where insertArgs symTab (Arg _ aType ident) =  -- TODO: local, no emptyLoc
                   M.insert ident (emptyLoc, toIrType aType) globals
 
 generateIrStmts :: [Stmt Pos] -> GenIrM ()
-generateIrStmts [] = return ()
-generateIrStmts (stmt : stmts) = do
-  generateIrStmt stmt
-  generateIrStmts stmts
+generateIrStmts  = mapM_ generateIrStmt
 
 generateIrStmt :: Stmt Pos -> GenIrM ()
 
@@ -89,6 +86,8 @@ generateIrStmt (Ass _ ident e) = undefined --do
 --    IntLit i ->
 --    IntBool i ->
 --    otherwise -> tell [AssInst loc val (IntLit 1)]
+-- str x = "asdf";
+-- y = x;
 -- TODO: what if Lit?
 
 generateIrStmt (Incr _ ident) = do

@@ -1,5 +1,6 @@
 - Funkcje mogą być wzajemnie rekurencyjne
 - Jeśli zmienna nie jest jawnie inicjalizowana w momencie deklaracji, jest inicjalizowana wartością domyślną (0 dla int, "" dla string, false dla bool).
+    - dawać "" na górze
 - Wyrażenie logiczne zwracają typ boolean i są obliczane leniwie
 - Napisy mogą być konkatenowane przy pomocy operatora +.
 
@@ -19,5 +20,9 @@
 OPTYMALIZACJE
 - nie usuwać wywołań funkcji - może mieć side effects
 
+README:
+- w sytuacjach spornych starałem się kierować tym jak działa kompilator java
+
 ROZSZERZENIA:
+
 
