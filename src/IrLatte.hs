@@ -129,61 +129,30 @@ generateIrStmts (BStmt _ (Block _ bStmts) : stmts) = do
 
 -- NOTE: Decl has at least one item.
 generateIrStmts (Decl pos dType (item : items) : stmts) = do
-  -- We can expand other declarations as Decl of [item] is same as [Decl item].
-  (_, strLitMap) <- ask
+  let (ident, e) = case item of
+                     Init _ ident e -> (ident, e)
+                     NoInit _ ident -> case dType of
+                       Str p -> (ident, EString p "")
+                       Int p -> (ident, ELitInt p 0)
+                       Bool p -> (ident, ELitFalse p)
+  val <- generateIrExp e
+  valLoc <- getValLoc val
   (n, l) <- get
   put (n + 1, l)
+  -- We can expand other declarations as Decl of [item] is same as [Decl item].
   let decls = map (\nItem -> Decl pos dType [nItem]) items
       newLoc = getLoc n
-      newLocN = getLoc (n + 1)
-  ident <- case dType of
-    Str _ -> case item of
-      NoInit _ ident -> do
-        let sLoc = fromJust $ M.lookup "" strLitMap
-        put (n + 2, l)
-        tell [StrLit newLoc "" sLoc, AssInst IrStr newLocN newLoc]
-        return ident
-      Init _ ident e -> do
-        val <- generateIrExp e
-        tell [AssInst IrStr newLoc $ getValLoc val]
-        return ident
-    Int _ -> case item of
-      NoInit _ ident -> do
-        put (n + 2, l)
-        tell [Add newLoc (IntLit 0) (IntLit 0), AssInst IrInt newLocN newLoc]
-        return ident
-      Init _ ident e -> do
-        val <- generateIrExp e
-        tell [AssInst IrInt newLoc $ getValLoc val]
-        return ident
-    _ -> case item of
-      NoInit _ ident -> do
-        put (n + 2, l)
-        tell [Add newLoc (BoolLit False) (BoolLit False),
-              AssInst IrBool newLocN newLoc]
-        return ident
-      Init _ ident e -> do
-        val <- generateIrExp e
-        tell [AssInst IrBool newLoc $ getValLoc val]
-        return ident
+  tell [AssInst (toIrType dType) newLoc valLoc]
   let newEnv (s, m) = (M.insert ident (newLoc, toIrType dType) s, m)
   local newEnv $ generateIrStmts (decls ++ stmts)
   return ()
 
 generateIrStmts (Ass _ ident e : stmts) = do
   (symTab, _) <- ask
-  (n, l) <- get
   let (loc, irType) = fromJust $ M.lookup ident symTab
-      newLoc = getLoc n
   val <- generateIrExp e
-  case val of
-    IntLit i -> do
-      put (n + 2, l)
-      tell [Add newLoc val (IntLit 0), AssInst IrInt loc newLoc]
-    BoolLit b -> do
-      put (n + 2, l)
-      tell [Add newLoc val (BoolLit False), AssInst IrBool loc newLoc]
-    Reg valLoc irType -> tell [AssInst irType loc valLoc]
+  valLoc <- getValLoc val
+  tell [AssInst irType loc valLoc]
   generateIrStmts stmts
 
 generateIrStmts (Incr _ ident : stmts) = do
@@ -192,7 +161,8 @@ generateIrStmts (Incr _ ident : stmts) = do
   put (n + 1, l)
   let newLoc = getLoc n
       (loc, irType) = fromJust $ M.lookup ident symTab
-  tell [Add newLoc (Reg loc irType) (IntLit 1), AssInst IrInt loc newLoc]
+  tell [Add newLoc (Reg loc irType) (IntLit 1),
+        AssInst IrInt loc newLoc]
   generateIrStmts stmts
 
 generateIrStmts (Decr _ ident : stmts) = do
@@ -201,7 +171,8 @@ generateIrStmts (Decr _ ident : stmts) = do
   put (n + 1, l)
   let newLoc = getLoc n
       (loc, irType) = fromJust $ M.lookup ident symTab
-  tell [Sub newLoc (Reg loc irType) (IntLit 1), AssInst IrInt loc newLoc]
+  tell [Sub newLoc (Reg loc irType) (IntLit 1),
+        AssInst IrInt loc newLoc]
   generateIrStmts stmts
 
 generateIrStmts (Ret _ e : stmts) = do
@@ -214,40 +185,48 @@ generateIrStmts (VRet _ : stmts) = do
 
 generateIrStmts (Cond _ e stmt : stmts) = do
   (n, l) <- get
-  put (n + 1, l + 2)
-  let labT = getLabel n
-      labF = getLabel $ n + 1
+  put (n, l + 2)
+  let labT = getLabel l
+      labF = getLabel $ l + 1
   val <- generateIrExp e
-  tell [Br val labT labF, Lab labT]
+  tell [Br val labT labF,
+        Lab labT]
   generateIrStmts [stmt]
-  tell [Goto labF, Lab labF]  -- goto to avoid empty blocks
+  tell [Goto labF,  -- goto to avoid empty blocks
+        Lab labF]
   generateIrStmts stmts
 
 generateIrStmts (CondElse _ e stmtT stmtF : stmts) = do
   (n, l) <- get
-  put (n + 1, l + 3)
-  let labT = getLabel n
-      labF = getLabel $ n + 1
-      labEnd = getLabel $ n + 2
+  put (n, l + 3)
+  let labT = getLabel l
+      labF = getLabel $ l + 1
+      labEnd = getLabel $ l + 2
   val <- generateIrExp e
-  tell [Br val labT labF, Lab labT]
+  tell [Br val labT labF,
+        Lab labT]
   generateIrStmts [stmtT]
-  tell [Goto labEnd, Lab labF]
+  tell [Goto labEnd,
+        Lab labF]
   generateIrStmts [stmtF]
-  tell [Goto labEnd, Lab labEnd]  -- goto to avoid empty blocks
+  tell [Goto labEnd,  -- goto to avoid empty blocks
+        Lab labEnd]
   generateIrStmts stmts
 
 generateIrStmts (While _ e stmt : stmts) = do
   (n, l) <- get
-  put (n + 1, l + 3)
-  let labCond = getLabel n
-      labBody = getLabel $ n + 1
-      labEnd = getLabel $ n + 2
-  tell [Goto labCond, Lab labCond]  -- goto to avoid empty blocks
+  put (n, l + 3)
+  let labCond = getLabel l
+      labBody = getLabel $ l + 1
+      labEnd = getLabel $ l + 2
+  tell [Goto labCond,  -- goto to avoid empty blocks
+        Lab labCond]
   val <- generateIrExp e
-  tell [Br val labBody labEnd, Lab labBody]
+  tell [Br val labBody labEnd,
+        Lab labBody]
   generateIrStmts [stmt]
-  tell [Goto labCond, Lab labEnd]
+  tell [Goto labCond,
+        Lab labEnd]
   generateIrStmts stmts
 
 generateIrStmts (SExp _ e : stmts) = do
@@ -306,11 +285,13 @@ generateIrExp (EMul _ e1 op e2) = do
   (n, l) <- get
   put (n + 1, l)
   let newLoc = getLoc n
-  tell [Mul newLoc val1 val2]
   case op of
-    (Times _) -> tell [Mul newLoc val1 val2]
-    (Div _) -> tell [SDiv newLoc val1 val2]
-    (Mod _) -> tell [SRem newLoc val1 val2]
+    (Times _) ->
+      tell [Mul newLoc val1 val2]
+    (Div _) ->
+      tell [SDiv newLoc val1 val2]
+    (Mod _) ->
+      tell [SRem newLoc val1 val2]
   return $ Reg newLoc $ getType val1
 
 generateIrExp (EAdd _ e1 op e2) = do
@@ -319,12 +300,14 @@ generateIrExp (EAdd _ e1 op e2) = do
   (n, l) <- get
   put (n + 1, l)
   let newLoc = getLoc n
-  tell [Mul newLoc val1 val2]
   case op of
     (Plus _) -> case getType val1 of
-      IrStr -> tell [Call newLoc IrStr "_concat" [val1, val2]]
-      _ -> tell [Add newLoc val1 val2]
-    (Minus _) -> tell [Sub newLoc val1 val2]
+      IrStr ->
+        tell [Call newLoc IrStr "_concat" [val1, val2]]
+      _ ->
+        tell [Add newLoc val1 val2]
+    (Minus _) ->
+      tell [Sub newLoc val1 val2]
   return $ Reg newLoc $ getType val1
 
 generateIrExp (ERel _ e1 op e2) = do
@@ -349,14 +332,59 @@ generateIrExp (ERel _ e1 op e2) = do
       tell [Icmp newLoc (toIrOp op) val1 val2]
       return $ Reg newLoc IrBool
 
-generateIrExp (EAnd _ e1 e2) = undefined -- TODO
--- todo: lazy evalutaions
+generateIrExp (EAnd _ e1 e2) = do
+  val1 <- generateIrExp e1
+  val1Loc <- getValLoc val1
+  (n, l) <- get
+  put (n + 1, l + 3)
+  let newLoc = getLoc n
+      labE1F = getLabel l
+      labE2 = getLabel $ l + 1
+      labEnd = getLabel $ l + 2
+  tell [Br val1 labE2 labE1F,
+        Lab labE1F,
+        AssInst IrBool newLoc val1Loc,
+        Goto labEnd,
+        Lab labE2]
+  val2 <- generateIrExp e2
+  val2Loc <- getValLoc val1
+  tell [AssInst IrBool newLoc val2Loc,
+        Lab labEnd]
+  return $ Reg newLoc IrBool
 
-generateIrExp (EOr _ e1 e2) = undefined -- TODO
--- todo: lazy evalutaions
+generateIrExp (EOr _ e1 e2) = do
+  val1 <- generateIrExp e1
+  val1Loc <- getValLoc val1
+  (n, l) <- get
+  put (n + 1, l + 3)
+  let newLoc = getLoc n
+      labE1T = getLabel l
+      labE2 = getLabel $ l + 1
+      labEnd = getLabel $ l + 2
+  tell [Br val1 labE1T labE2,
+        Lab labE1T,
+        AssInst IrBool newLoc val1Loc,
+        Goto labEnd,
+        Lab labE2]
+  val2 <- generateIrExp e2
+  val2Loc <- getValLoc val1
+  tell [AssInst IrBool newLoc val2Loc,
+        Lab labEnd]
+  return $ Reg newLoc IrBool
 
 
 -- Utils
+
+getValLoc :: Value -> GenIrM Loc
+getValLoc (Reg valLoc _) = return valLoc
+getValLoc val = do
+  (n, l) <- get
+  put (n + 1, l)
+  let newLoc = getLoc n
+  case val of
+    IntLit i -> tell [Add newLoc val (IntLit 0)]
+    BoolLit b -> tell [Add newLoc val (BoolLit False)]
+  return newLoc
 
 -- Returns next registry location.
 _getLoc :: Int -> Char -> Loc
@@ -370,10 +398,6 @@ getArgLoc n = _getLOc 'a' n
 
 getLabel :: Int -> Label
 getLabel n = _getLOc 'l' n
-
-getValLoc :: Value -> Loc
-getValLoc (Reg loc _) = loc
-getValLoc _ = ""
 
 toIrType :: TypePos -> IrType
 toIrType (Int _) = IrInt
