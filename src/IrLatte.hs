@@ -19,7 +19,10 @@ data Value = Reg Loc IrType | IntLit Integer | BoolLit Bool
 
 type Label = String
 
-data Inst
+data IrRelOp = Lth | Le | Gth | Ge | Equ | Ne
+  deriving (Eq, Ord, Read)
+
+data IrInst
   = AssInst IrType Loc Loc  -- Internal inst eliminated after SSA; a := b
   | RetInst Value
   | VRetInst
@@ -31,10 +34,10 @@ data Inst
   | SRem Loc Value Value
   | Add Loc Value Value
   | Sub Loc Value Value
-  | Icmp Loc String Value Value
+  | Icmp Loc IrRelOp Value Value
   deriving (Eq, Ord, Read)
 
-data BasicBlock = BasicBlock Label [Inst]
+data BasicBlock = BasicBlock Label [IrInst]
 
 -- todo: str cmp, str add -> functions
 
@@ -51,13 +54,13 @@ builtins = [(Ident "printInt", (emptyLoc, IrVoid)),
             (Ident "readInt", (emptyLoc, IrInt)),
             (Ident "readString", (emptyLoc, IrStr))]
 
-type GenIrM a = WriterT [Inst] (StateT Int (Reader (SymTab, StrMap))) a
+type GenIrM a = WriterT [IrInst] (StateT Int (Reader (SymTab, StrMap))) a
 
-runGenIrM :: [Stmt Pos] -> Int -> SymTab -> StrMap -> [Inst]
+runGenIrM :: [Stmt Pos] -> Int -> SymTab -> StrMap -> [IrInst]
 runGenIrM stmts i symTab m = snd $ fst r where
   r = runReader (runStateT (runWriterT (generateIrStmts stmts)) i) (symTab, m)
 
-generateIr :: Program Pos -> [[Inst]]
+generateIr :: Program Pos -> [[IrInst]]
 generateIr (Program _ topDefs) = map runGenIrTopDef topDefs
   where
     foldPutTopDefs globals (FnDef _ fRet fName _ _) =
@@ -239,40 +242,52 @@ generateIrExp (EString _ str) = do
   n <- get
   put $ n + 1
   let sLoc = fromJust $ M.lookup str strLitMap
-      loc = getLoc n
-  tell [StrLit loc str sLoc]
-  return $ Reg loc IrStr
+      newLoc = getLoc n
+  tell [StrLit newLoc str sLoc]
+  return $ Reg newLoc IrStr
 
-generateIrExp (Neg _ e) = undefined -- TODO
+generateIrExp (Neg _ e) = do
+  val <- generateIrExp e
+  n <- get
+  put $ n + 1
+  let newLoc = getLoc n
+  tell [Sub newLoc (IntLit 0) val]
+  return $ Reg newLoc IrInt
 
-generateIrExp (Not _ e) = undefined -- TODO
+generateIrExp (Not _ e) = do
+  val <- generateIrExp e
+  n <- get
+  put $ n + 1
+  let newLoc = getLoc n
+  tell [Icmp newLoc Equ val (BoolLit False)]
+  return $ Reg newLoc IrBool
 
 generateIrExp (EMul _ e1 op e2) = do
   val1 <- generateIrExp e1
   val2 <- generateIrExp e2
   n <- get
   put $ n + 1
-  let loc = getLoc n
-  tell [Mul loc val1 val2]
+  let newLoc = getLoc n
+  tell [Mul newLoc val1 val2]
   case op of
-    (Times _) -> tell [Mul loc val1 val2]
-    (Div _) -> tell [SDiv loc val1 val2]
-    (Mod _) -> tell [SRem loc val1 val2]
-  return $ Reg loc $ getType val1
+    (Times _) -> tell [Mul newLoc val1 val2]
+    (Div _) -> tell [SDiv newLoc val1 val2]
+    (Mod _) -> tell [SRem newLoc val1 val2]
+  return $ Reg newLoc $ getType val1
 
 generateIrExp (EAdd _ e1 op e2) = do
   val1 <- generateIrExp e1
   val2 <- generateIrExp e2
   n <- get
   put $ n + 1
-  let loc = getLoc n
-  tell [Mul loc val1 val2]
+  let newLoc = getLoc n
+  tell [Mul newLoc val1 val2]
   case op of
     (Plus _) -> case getType val1 of
       IrStr -> undefined  -- TODO: func app
-      _ -> tell [Add loc val1 val2]
-    (Minus _) -> tell [Sub loc val1 val2]
-  return $ Reg loc $ getType val1
+      _ -> tell [Add newLoc val1 val2]
+    (Minus _) -> tell [Sub newLoc val1 val2]
+  return $ Reg newLoc $ getType val1
 
 generateIrExp (ERel _ e1 op e2) = undefined -- TODO
 
@@ -301,6 +316,14 @@ toIrType (Int _) = IrInt
 toIrType (Str _) = IrStr
 toIrType (Bool _) = IrBool
 toIrType (Void _) = IrVoid
+
+toIrOp :: RelOp Pos -> IrRelOp
+toIrOp (LTH _) = Lth
+toIrOp (LE _) = Le
+toIrOp (GTH _) = Gth
+toIrOp (GE _) = Ge
+toIrOp (EQU _) = Equ
+toIrOp (NE _) = Ne
 
 getType :: Value -> IrType
 getType (Reg _ t) = t
