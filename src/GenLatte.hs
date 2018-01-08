@@ -50,7 +50,16 @@ generateLlvm (Program _ topDefs) = LlvmProg strConsts externs defines
         (locals, n) = foldl insertArgs (globals, 0) args
         insertArgs (symTab, i) (Arg _ aType ident) =
           (M.insert ident (getArgLoc i, toLlvmType aType) globals, i + 1)
-        insts = Lab (getLabel (-1)) : runGenLlvmM stmts n 0 locals strLitMap
+        insts = Lab (getLabel (-1)) : body ++ vRet
+          where
+            body = runGenLlvmM stmts n 0 locals strLitMap
+            -- Ensure that void function returns.
+            vRet = case fType of
+              (Void _)
+                | null body -> [VRetInst]
+                | last body == VRetInst -> []
+                | otherwise -> [VRetInst]
+              _ -> []
     defines = map runGenIrTopDef topDefs
 
 getStrLiteralsTopDef :: TopDef Pos -> [String]
