@@ -129,7 +129,7 @@ generateIrStmts (BStmt _ (Block _ bStmts) : stmts) = do
 -- NOTE: Decl has at least one item.
 generateIrStmts (Decl pos dType (item : items) : stmts) = do
   -- We can expand other declarations as Decl of [item] is same as [Decl item].
-  (symTab, strLitMap) <- ask
+  (_, strLitMap) <- ask
   n <- get
   put $ n + 1
   let decls = map (\nItem -> Decl pos dType [nItem]) items
@@ -235,7 +235,15 @@ generateIrExp (ELitInt _ i) = return $ IntLit i
 generateIrExp (ELitTrue _) = return $ BoolLit True
 generateIrExp (ELitFalse _) = return $ BoolLit False
 
-generateIrExp (EApp _ ident es) = undefined -- TODO
+generateIrExp (EApp _ ident es) = do
+  (symTab, _) <- ask
+  n <- get
+  put $ n + 1
+  let (_, rType) = fromJust $ M.lookup ident symTab
+      newLoc = getLoc n
+  vals <- mapM generateIrExp es
+  tell [Call newLoc rType (show ident) vals]
+  return $ Reg newLoc rType
 
 generateIrExp (EString _ str) = do
   (_, strLitMap) <- ask
