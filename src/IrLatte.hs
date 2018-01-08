@@ -39,8 +39,6 @@ data IrInst
 
 data BasicBlock = BasicBlock Label [IrInst]
 
--- todo: str cmp, str add -> functions
-
 type SymTab = M.Map Ident (Loc, IrType)
 type StrMap = M.Map String Loc
 
@@ -54,11 +52,12 @@ builtins = [(Ident "printInt", (emptyLoc, IrVoid)),
             (Ident "readInt", (emptyLoc, IrInt)),
             (Ident "readString", (emptyLoc, IrStr))]
 
-type GenIrM a = WriterT [IrInst] (StateT Int (Reader (SymTab, StrMap))) a
+type GenIrM a =
+  WriterT [IrInst] (StateT (Int, Int) (Reader (SymTab, StrMap))) a
 
-runGenIrM :: [Stmt Pos] -> Int -> SymTab -> StrMap -> [IrInst]
-runGenIrM stmts i symTab m = snd $ fst r where
-  r = runReader (runStateT (runWriterT (generateIrStmts stmts)) i) (symTab, m)
+runGenIrM :: [Stmt Pos] -> Int -> Int -> SymTab -> StrMap -> [IrInst]
+runGenIrM stmts i l s m = snd $ fst r where
+  r = runReader (runStateT (runWriterT (generateIrStmts stmts)) (i, l)) (s, m)
 
 generateIr :: Program Pos -> [[IrInst]]
 generateIr (Program _ topDefs) = map runGenIrTopDef topDefs
@@ -70,11 +69,11 @@ generateIr (Program _ topDefs) = map runGenIrTopDef topDefs
     strLitLoc = map (\(s, i) -> (s, "@.str." ++ show i)) $ zip strLit [0..]
     strLitMap = M.fromList strLitLoc
     runGenIrTopDef (FnDef _ _ _ args (Block _ stmts)) =
-      runGenIrM stmts (n - 1) locals strLitMap
+      runGenIrM stmts n 0 locals strLitMap
       where
         (locals, n) = foldl insertArgs (globals, 0) args
         insertArgs (symTab, loc) (Arg _ aType ident) =
-          (M.insert ident (getLocalLoc loc, toIrType aType) globals, loc + 1)
+          (M.insert ident (getArgLoc loc, toIrType aType) globals, loc + 1)
 
 getStrLiteralsTopDef :: TopDef Pos -> [String]
 getStrLiteralsTopDef (FnDef _ _ _ _ (Block _ stmts)) =
@@ -130,8 +129,8 @@ generateIrStmts (BStmt _ (Block _ bStmts) : stmts) = do
 generateIrStmts (Decl pos dType (item : items) : stmts) = do
   -- We can expand other declarations as Decl of [item] is same as [Decl item].
   (_, strLitMap) <- ask
-  n <- get
-  put $ n + 1
+  (n, l) <- get
+  put (n + 1, l)
   let decls = map (\nItem -> Decl pos dType [nItem]) items
       newLoc = getLoc n
       newLocN = getLoc (n + 1)
@@ -139,7 +138,7 @@ generateIrStmts (Decl pos dType (item : items) : stmts) = do
     Str _ -> case item of
       NoInit _ ident -> do
         let sLoc = fromJust $ M.lookup "" strLitMap
-        put $ n + 2
+        put (n + 2, l)
         tell [StrLit newLoc "" sLoc, AssInst IrStr newLocN newLoc]
         return ident
       Init _ ident e -> do
@@ -148,7 +147,7 @@ generateIrStmts (Decl pos dType (item : items) : stmts) = do
         return ident
     Int _ -> case item of
       NoInit _ ident -> do
-        put $ n + 2
+        put (n + 2, l)
         tell [Add newLoc (IntLit 0) (IntLit 0), AssInst IrInt newLocN newLoc]
         return ident
       Init _ ident e -> do
@@ -157,7 +156,7 @@ generateIrStmts (Decl pos dType (item : items) : stmts) = do
         return ident
     _ -> case item of
       NoInit _ ident -> do
-        put $ n + 2
+        put (n + 2, l)
         tell [Add newLoc (BoolLit False) (BoolLit False),
               AssInst IrBool newLocN newLoc]
         return ident
@@ -171,24 +170,24 @@ generateIrStmts (Decl pos dType (item : items) : stmts) = do
 
 generateIrStmts (Ass _ ident e : stmts) = do
   (symTab, _) <- ask
-  n <- get
+  (n, l) <- get
   let (loc, irType) = fromJust $ M.lookup ident symTab
       newLoc = getLoc n
   val <- generateIrExp e
   case val of
     IntLit i -> do
-      put $ n + 2
+      put (n + 2, l)
       tell [Add newLoc val (IntLit 0), AssInst IrInt loc newLoc]
     BoolLit b -> do
-      put $ n + 2
+      put (n + 2, l)
       tell [Add newLoc val (BoolLit False), AssInst IrBool loc newLoc]
     Reg valLoc irType -> tell [AssInst irType loc valLoc]
   generateIrStmts stmts
 
 generateIrStmts (Incr _ ident : stmts) = do
   (symTab, _) <- ask
-  n <- get
-  put $ n + 1
+  (n, l) <- get
+  put (n + 1, l)
   let newLoc = getLoc n
       (loc, irType) = fromJust $ M.lookup ident symTab
   tell [Add newLoc (Reg loc irType) (IntLit 1), AssInst IrInt loc newLoc]
@@ -196,8 +195,8 @@ generateIrStmts (Incr _ ident : stmts) = do
 
 generateIrStmts (Decr _ ident : stmts) = do
   (symTab, _) <- ask
-  n <- get
-  put $ n + 1
+  (n, l) <- get
+  put (n + 1, l)
   let newLoc = getLoc n
       (loc, irType) = fromJust $ M.lookup ident symTab
   tell [Sub newLoc (Reg loc irType) (IntLit 1), AssInst IrInt loc newLoc]
@@ -237,8 +236,8 @@ generateIrExp (ELitFalse _) = return $ BoolLit False
 
 generateIrExp (EApp _ ident es) = do
   (symTab, _) <- ask
-  n <- get
-  put $ n + 1
+  (n, l) <- get
+  put (n + 1, l)
   let (_, rType) = fromJust $ M.lookup ident symTab
       newLoc = getLoc n
   vals <- mapM generateIrExp es
@@ -247,8 +246,8 @@ generateIrExp (EApp _ ident es) = do
 
 generateIrExp (EString _ str) = do
   (_, strLitMap) <- ask
-  n <- get
-  put $ n + 1
+  (n, l) <- get
+  put (n + 1, l)
   let sLoc = fromJust $ M.lookup str strLitMap
       newLoc = getLoc n
   tell [StrLit newLoc str sLoc]
@@ -256,16 +255,16 @@ generateIrExp (EString _ str) = do
 
 generateIrExp (Neg _ e) = do
   val <- generateIrExp e
-  n <- get
-  put $ n + 1
+  (n, l) <- get
+  put (n + 1, l)
   let newLoc = getLoc n
   tell [Sub newLoc (IntLit 0) val]
   return $ Reg newLoc IrInt
 
 generateIrExp (Not _ e) = do
   val <- generateIrExp e
-  n <- get
-  put $ n + 1
+  (n, l) <- get
+  put (n + 1, l)
   let newLoc = getLoc n
   tell [Icmp newLoc Equ val (BoolLit False)]
   return $ Reg newLoc IrBool
@@ -273,8 +272,8 @@ generateIrExp (Not _ e) = do
 generateIrExp (EMul _ e1 op e2) = do
   val1 <- generateIrExp e1
   val2 <- generateIrExp e2
-  n <- get
-  put $ n + 1
+  (n, l) <- get
+  put (n + 1, l)
   let newLoc = getLoc n
   tell [Mul newLoc val1 val2]
   case op of
@@ -286,8 +285,8 @@ generateIrExp (EMul _ e1 op e2) = do
 generateIrExp (EAdd _ e1 op e2) = do
   val1 <- generateIrExp e1
   val2 <- generateIrExp e2
-  n <- get
-  put $ n + 1
+  (n, l) <- get
+  put (n + 1, l)
   let newLoc = getLoc n
   tell [Mul newLoc val1 val2]
   case op of
@@ -300,8 +299,8 @@ generateIrExp (EAdd _ e1 op e2) = do
 generateIrExp (ERel _ e1 op e2) = do
   val1 <- generateIrExp e1
   val2 <- generateIrExp e2
-  n <- get
-  put $ n + 1
+  (n, l) <- get
+  put (n + 1, l)
   let newLoc = getLoc n
   case getType val1 of
     IrStr -> case op of
@@ -311,7 +310,7 @@ generateIrExp (ERel _ e1 op e2) = do
         return $ Reg newLoc IrBool
       NE _ -> do
         let newLocN = getLoc $ n + 1
-        put $ n + 1
+        put (n + 1, l)
         tell [Call newLoc IrBool "_streq" [val1, val2],
               Icmp newLocN Equ (Reg newLoc IrBool) (BoolLit False)]
         return $ Reg newLocN IrBool
@@ -329,15 +328,21 @@ generateIrExp (EOr _ e1 e2) = undefined -- TODO
 -- Utils
 
 -- Returns next registry location.
+_getLoc :: Int -> Char -> Loc
+_getLoc n c = '%' : c : show (n + 1)
+
 getLoc :: Int -> Loc
-getLoc n = '%' : show (n + 1)
+getLoc n = _getLOc 'r' n
+
+getArgLoc :: Int -> Loc
+getArgLoc n = _getLOc 'a' n
+
+getLabel :: Int -> Loc
+getLabel n = _getLOc 'l' n
 
 getValLoc :: Value -> Loc
 getValLoc (Reg loc _) = loc
 getValLoc _ = ""
-
-getLocalLoc :: Int -> Loc
-getLocalLoc n = "%l" ++ show n
 
 toIrType :: TypePos -> IrType
 toIrType (Int _) = IrInt
