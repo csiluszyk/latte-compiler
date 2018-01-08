@@ -27,7 +27,7 @@ data IrInst
   | RetInst Value
   | VRetInst
   | Br Value Label Label
-  | Call Loc String [Value]
+  | Call Loc IrType String [Value]
   | StrLit Loc String Loc
   | Mul Loc Value Value
   | SDiv Loc Value Value
@@ -139,7 +139,7 @@ generateIrStmts (Decl pos dType (item : items) : stmts) = do
     Str _ -> case item of
       NoInit _ ident -> do
         let sLoc = fromJust $ M.lookup "" strLitMap
-        put $ n + 1
+        put $ n + 2
         tell [StrLit newLoc "" sLoc, AssInst IrStr newLocN newLoc]
         return ident
       Init _ ident e -> do
@@ -148,7 +148,7 @@ generateIrStmts (Decl pos dType (item : items) : stmts) = do
         return ident
     Int _ -> case item of
       NoInit _ ident -> do
-        put $ n + 1
+        put $ n + 2
         tell [Add newLoc (IntLit 0) (IntLit 0), AssInst IrInt newLocN newLoc]
         return ident
       Init _ ident e -> do
@@ -157,7 +157,7 @@ generateIrStmts (Decl pos dType (item : items) : stmts) = do
         return ident
     _ -> case item of
       NoInit _ ident -> do
-        put $ n + 1
+        put $ n + 2
         tell [Add newLoc (BoolLit False) (BoolLit False),
               AssInst IrBool newLocN newLoc]
         return ident
@@ -177,10 +177,10 @@ generateIrStmts (Ass _ ident e : stmts) = do
   val <- generateIrExp e
   case val of
     IntLit i -> do
-      put $ n + 1
+      put $ n + 2
       tell [Add newLoc val (IntLit 0), AssInst IrInt loc newLoc]
     BoolLit b -> do
-      put $ n + 1
+      put $ n + 2
       tell [Add newLoc val (BoolLit False), AssInst IrBool loc newLoc]
     Reg valLoc irType -> tell [AssInst irType loc valLoc]
   generateIrStmts stmts
@@ -284,12 +284,32 @@ generateIrExp (EAdd _ e1 op e2) = do
   tell [Mul newLoc val1 val2]
   case op of
     (Plus _) -> case getType val1 of
-      IrStr -> undefined  -- TODO: func app
+      IrStr -> tell [Call newLoc IrStr "_concat" [val1, val2]]
       _ -> tell [Add newLoc val1 val2]
     (Minus _) -> tell [Sub newLoc val1 val2]
   return $ Reg newLoc $ getType val1
 
-generateIrExp (ERel _ e1 op e2) = undefined -- TODO
+generateIrExp (ERel _ e1 op e2) = do
+  val1 <- generateIrExp e1
+  val2 <- generateIrExp e2
+  n <- get
+  put $ n + 1
+  let newLoc = getLoc n
+  case getType val1 of
+    IrStr -> case op of
+    -- Use pre-defined function to cmp strings.
+      EQU _ -> do
+        tell [Call newLoc IrBool "_streq" [val1, val2]]
+        return $ Reg newLoc IrBool
+      NE _ -> do
+        let newLocN = getLoc $ n + 1
+        put $ n + 1
+        tell [Call newLoc IrBool "_streq" [val1, val2],
+              Icmp newLocN Equ (Reg newLoc IrBool) (BoolLit False)]
+        return $ Reg newLocN IrBool
+    _ -> do
+      tell [Icmp newLoc (toIrOp op) val1 val2]
+      return $ Reg newLoc IrBool
 
 generateIrExp (EAnd _ e1 e2) = undefined -- TODO
 -- todo: lazy evalutaions
