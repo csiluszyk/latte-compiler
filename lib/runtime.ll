@@ -1,6 +1,6 @@
 @dnl = internal constant [4 x i8] c"%d\0A\00"
 @d   = internal constant [3 x i8] c"%d\00"
-@.str = private constant [15 x i8] c"runtime error\0A\00"
+@.str = internal constant [15 x i8] c"runtime error\0A\00"
 
 declare void @exit(i32)
 declare i32 @printf(i8*, ...)

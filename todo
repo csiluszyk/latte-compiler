@@ -19,7 +19,7 @@ Ass -> nie musi być poprzedzający, może być jeszcze wcześniejszy
 - po br/goto zawsze label
 
 - change stack path in Makefile
-- test Main.hs
+- change test/Main.hs
 
 OPTYMALIZACJE
 - nie usuwać wywołań funkcji - może mieć side effects

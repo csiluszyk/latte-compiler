@@ -10,6 +10,7 @@ import ParLatte
 import AbsLatte
 
 import TypeCheckLatte (typeCheck)
+import GenLatte (generateLlvm)
 
 main :: IO ()
 main = do
@@ -38,7 +39,6 @@ compile hFile = do
           hPutStrLn stderr err
           exitFailure
         Nothing -> do
-          -- result :: [Value]
-          -- print symTab
           hPutStrLn stderr "OK"
+          print $ generateLlvm prog
           exitSuccess

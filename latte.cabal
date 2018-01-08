@@ -2,7 +2,7 @@ name:                latte
 version:             0.1.0.0
 author:              Cezary Siłuszyk
 maintainer:          cs321191@students.mimuw.edu.pl
-copyright:           2017 Cezary Siłuszyk
+copyright:           2018 Cezary Siłuszyk
 build-type:          Simple
 cabal-version:       >=1.10
 extra-source-files:  README.md
@@ -12,8 +12,9 @@ executable latc_llvm
   main-is:             Main.hs
   other-modules:       AbsLatte
                        ErrM
-                       IrLatte
+                       GenLatte
                        LexLatte
+                       LlvmLatte
                        ParLatte
                        TypeCheckLatte
                        UtilsLatte

@@ -44,7 +44,7 @@ typeCheck (Program pos topDefs) =
   in let errs = topDefsErrs ++ defsErrs
   in case errs of
     [] -> Nothing
-    l -> Just $ intercalate "\n" ((show (length l) ++ " errors found:") : l)
+    l -> Just $ unlines ((show (length l) ++ " errors found:") : l)
 
 typeCheckTopDefs :: [TopDef Pos] -> (SymTab, [String])
 typeCheckTopDefs topDefs = (globals, mainErrs ++ reverse errs)
