@@ -49,7 +49,7 @@ generateLlvm (Program _ topDefs) = LlvmProg strConsts externs defines
         toLlvmArg (Arg _ aType _) i = Reg (getArgLoc i) (toLlvmType aType)
         (locals, n) = foldl insertArgs (globals, 0) args
         insertArgs (symTab, i) (Arg _ aType ident) =
-          (M.insert ident (getArgLoc i, toLlvmType aType) globals, i + 1)
+          (M.insert ident (getArgLoc i, toLlvmType aType) symTab, i + 1)
         insts = Lab (getLabel (-1)) : body ++ vRet
           where
             body = runGenLlvmM stmts n 0 locals strLitMap

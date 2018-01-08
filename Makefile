@@ -12,7 +12,7 @@ clean: testclean
 testclean:
 	find test/tests -regex '.*.\(ll\|bc\)' -type f -delete
 
-test: all testclean
-	$(STACK) test --ta "-j4"
+test: testclean
+	$(STACK) test --ta "--quiet -j4"
 
 .PHONY: test testclean clean
