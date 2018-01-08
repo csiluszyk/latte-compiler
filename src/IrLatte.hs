@@ -20,12 +20,12 @@ data Value = Reg Loc IrType | IntLit Integer | BoolLit Bool
 type Label = String
 
 data Inst
-  = AssInst Loc Value
+  = AssInst IrType Loc Loc  -- Internal inst eliminated after SSA; a := b
   | RetInst Value
   | VRetInst
   | Br Value Label Label
   | Call Loc String [Value]
-  | StrLit Loc String
+  | StrLit Loc String Loc
   | Mul Loc Value Value
   | SDiv Loc Value Value
   | SRem Loc Value Value
@@ -123,32 +123,81 @@ generateIrStmts (BStmt _ (Block _ bStmts) : stmts) = do
   generateIrStmts bStmts
   generateIrStmts stmts
 
-generateIrStmts (Decl _ dType items : stmts) = do
-  generateIrStmts stmts
+-- NOTE: Decl has at least one item.
+generateIrStmts (Decl pos dType (item : items) : stmts) = do
+  -- We can expand other declarations as Decl of [item] is same as [Decl item].
+  (symTab, strLitMap) <- ask
+  n <- get
+  put $ n + 1
+  let decls = map (\nItem -> Decl pos dType [nItem]) items
+      newLoc = getLoc n
+      newLocN = getLoc (n + 1)
+  ident <- case dType of
+    Str _ -> case item of
+      NoInit _ ident -> do
+        let sLoc = fromJust $ M.lookup "" strLitMap
+        put $ n + 1
+        tell [StrLit newLoc "" sLoc, AssInst IrStr newLocN newLoc]
+        return ident
+      Init _ ident e -> do
+        val <- generateIrExp e
+        tell [AssInst IrStr newLoc $ getValLoc val]
+        return ident
+    Int _ -> case item of
+      NoInit _ ident -> do
+        put $ n + 1
+        tell [Add newLoc (IntLit 0) (IntLit 0), AssInst IrInt newLocN newLoc]
+        return ident
+      Init _ ident e -> do
+        val <- generateIrExp e
+        tell [AssInst IrInt newLoc $ getValLoc val]
+        return ident
+    _ -> case item of
+      NoInit _ ident -> do
+        put $ n + 1
+        tell [Add newLoc (BoolLit False) (BoolLit False),
+              AssInst IrBool newLocN newLoc]
+        return ident
+      Init _ ident e -> do
+        val <- generateIrExp e
+        tell [AssInst IrBool newLoc $ getValLoc val]
+        return ident
+  let newEnv (s, m) = (M.insert ident (newLoc, toIrType dType) s, m)
+  local newEnv $ generateIrStmts (decls ++ stmts)
+  return ()
 
-generateIrStmts (Ass _ ident e : stmts) = do  -- todo
+generateIrStmts (Ass _ ident e : stmts) = do
+  (symTab, _) <- ask
+  n <- get
+  let (loc, irType) = fromJust $ M.lookup ident symTab
+      newLoc = getLoc n
+  val <- generateIrExp e
+  case val of
+    IntLit i -> do
+      put $ n + 1
+      tell [Add newLoc val (IntLit 0), AssInst IrInt loc newLoc]
+    BoolLit b -> do
+      put $ n + 1
+      tell [Add newLoc val (BoolLit False), AssInst IrBool loc newLoc]
+    Reg valLoc irType -> tell [AssInst irType loc valLoc]
   generateIrStmts stmts
---  symTab <- ask
---  let (loc, irType) = fromJust $ M.lookup ident symTab
---  val <- generateIrExp e
---  case val of
---    IntLit i ->
---    IntBool i ->
---    otherwise -> tell [AssInst loc val (IntLit 1)]
--- str x = "asdf";
--- y = x;
--- TODO: what if Lit?
 
 generateIrStmts (Incr _ ident : stmts) = do
   (symTab, _) <- ask
-  let (loc, irType) = fromJust $ M.lookup ident symTab
-  tell [Add loc (Reg loc irType) (IntLit 1)]
+  n <- get
+  put $ n + 1
+  let newLoc = getLoc n
+      (loc, irType) = fromJust $ M.lookup ident symTab
+  tell [Add newLoc (Reg loc irType) (IntLit 1), AssInst IrInt loc newLoc]
   generateIrStmts stmts
 
 generateIrStmts (Decr _ ident : stmts) = do
   (symTab, _) <- ask
-  let (loc, irType) = fromJust $ M.lookup ident symTab
-  tell [Sub loc (Reg loc irType) (IntLit 1)]
+  n <- get
+  put $ n + 1
+  let newLoc = getLoc n
+      (loc, irType) = fromJust $ M.lookup ident symTab
+  tell [Sub newLoc (Reg loc irType) (IntLit 1), AssInst IrInt loc newLoc]
   generateIrStmts stmts
 
 generateIrStmts (Ret _ e : stmts) = do
@@ -162,10 +211,10 @@ generateIrStmts (VRet _ : stmts) = do
 generateIrStmts (Cond _ e stmt : stmts) = do
   generateIrStmts stmts
 
-generateIrStmts (CondElse _ e stmtT stmtF : stmts) = do  -- TODO
+generateIrStmts (CondElse _ e stmtT stmtF : stmts) = do
   generateIrStmts stmts
 
-generateIrStmts (While _ e stmt : stmts) = do  -- TODO
+generateIrStmts (While _ e stmt : stmts) = do
   generateIrStmts stmts
 
 generateIrStmts (SExp _ e : stmts) = do
@@ -187,8 +236,11 @@ generateIrExp (EApp _ ident es) = undefined -- TODO
 
 generateIrExp (EString _ str) = do
   (_, strLitMap) <- ask
-  let loc = fromJust $ M.lookup str strLitMap
-  tell [StrLit loc str]
+  n <- get
+  put $ n + 1
+  let sLoc = fromJust $ M.lookup str strLitMap
+      loc = getLoc n
+  tell [StrLit loc str sLoc]
   return $ Reg loc IrStr
 
 generateIrExp (Neg _ e) = undefined -- TODO
@@ -236,6 +288,10 @@ generateIrExp (EOr _ e1 e2) = undefined -- TODO
 -- Returns next registry location.
 getLoc :: Int -> Loc
 getLoc n = '%' : show (n + 1)
+
+getValLoc :: Value -> Loc
+getValLoc (Reg loc _) = loc
+getValLoc _ = ""
 
 getLocalLoc :: Int -> Loc
 getLocalLoc n = "%l" ++ show n

@@ -1,10 +1,10 @@
 - Funkcje mogą być wzajemnie rekurencyjne
-- Jeśli zmienna nie jest jawnie inicjalizowana w momencie deklaracji, jest inicjalizowana wartością domyślną (0 dla int, "" dla string, false dla bool).
-    - dawać "" na górze
 - Wyrażenie logiczne zwracają typ boolean i są obliczane leniwie
 - Napisy mogą być konkatenowane przy pomocy operatora +.
 
 napisy -> + '\0' na końcu, +1 do length
+
+Ass -> nie musi być poprzedzający, może być jeszcze wcześniejszy
 
 - Są dostępne predefiniowane funkcje:
     void printInt(int)
@@ -13,8 +13,7 @@ napisy -> + '\0' na końcu, +1 do length
     int readInt()
     string readString()
 
-- Wszystkie parametry są przekazywane przez wartość.
-- Wewnątrz funkcji parametry formalne zachowują się jak zmienne lokalne
+- Wszystkie parametry są przekazywane przez wartość. - to test
 - Przekazanie napisu jako parametru odbywa sie poprzez przekazanie przez wartość referencji do napisu.
 
 - change stack path in Makefile
