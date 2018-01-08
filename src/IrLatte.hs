@@ -27,6 +27,8 @@ data IrInst
   | RetInst Value
   | VRetInst
   | Br Value Label Label
+  | Goto Label
+  | Lab Label
   | Call Loc IrType String [Value]
   | StrLit Loc String Loc
   | Mul Loc Value Value
@@ -211,12 +213,41 @@ generateIrStmts (VRet _ : stmts) = do
   generateIrStmts stmts
 
 generateIrStmts (Cond _ e stmt : stmts) = do
+  (n, l) <- get
+  put (n + 1, l + 2)
+  let labT = getLabel n
+      labF = getLabel $ n + 1
+  val <- generateIrExp e
+  tell [Br val labT labF, Lab labT]
+  generateIrStmts [stmt]
+  tell [Goto labF, Lab labF]  -- goto to avoid empty blocks
   generateIrStmts stmts
 
 generateIrStmts (CondElse _ e stmtT stmtF : stmts) = do
+  (n, l) <- get
+  put (n + 1, l + 3)
+  let labT = getLabel n
+      labF = getLabel $ n + 1
+      labEnd = getLabel $ n + 2
+  val <- generateIrExp e
+  tell [Br val labT labF, Lab labT]
+  generateIrStmts [stmtT]
+  tell [Goto labEnd, Lab labF]
+  generateIrStmts [stmtF]
+  tell [Goto labEnd, Lab labEnd]  -- goto to avoid empty blocks
   generateIrStmts stmts
 
 generateIrStmts (While _ e stmt : stmts) = do
+  (n, l) <- get
+  put (n + 1, l + 3)
+  let labCond = getLabel n
+      labBody = getLabel $ n + 1
+      labEnd = getLabel $ n + 2
+  tell [Goto labCond, Lab labCond]  -- goto to avoid empty blocks
+  val <- generateIrExp e
+  tell [Br val labBody labEnd, Lab labBody]
+  generateIrStmts [stmt]
+  tell [Goto labCond, Lab labEnd]
   generateIrStmts stmts
 
 generateIrStmts (SExp _ e : stmts) = do
@@ -337,7 +368,7 @@ getLoc n = _getLOc 'r' n
 getArgLoc :: Int -> Loc
 getArgLoc n = _getLOc 'a' n
 
-getLabel :: Int -> Loc
+getLabel :: Int -> Label
 getLabel n = _getLOc 'l' n
 
 getValLoc :: Value -> Loc
