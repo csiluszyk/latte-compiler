@@ -5,14 +5,14 @@ all:
 	$(STACK) setup
 	$(STACK) install
 
-test:
-	$(STACK) test
+clean: testclean
+	$(STACK) clean
+	-rm -rf latc_llvm
 
 testclean:
 	find test/tests -regex '.*.\(ll\|bc\)' -type f -delete
 
-clean:
-	$(STACK) clean
-	-rm -rf latc_llvm
+test: all testclean
+	$(STACK) test --ta "-j4"
 
 .PHONY: test testclean clean

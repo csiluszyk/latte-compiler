@@ -61,6 +61,7 @@ runGenIrM :: [Stmt Pos] -> Int -> Int -> SymTab -> StrMap -> [IrInst]
 runGenIrM stmts i l s m = snd $ fst r where
   r = runReader (runStateT (runWriterT (generateIrStmts stmts)) (i, l)) (s, m)
 
+-- TODO: insert l0 at the beginning of the function
 generateIr :: Program Pos -> [[IrInst]]
 generateIr (Program _ topDefs) = map runGenIrTopDef topDefs
   where
