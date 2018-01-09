@@ -2,7 +2,10 @@ import System.Environment (getArgs, getProgName)
 import System.IO (
   withFile, hGetContents, Handle, IOMode (ReadMode), stdin, stderr, hPutStrLn
   )
-import System.Exit (exitFailure, exitSuccess)
+import System.FilePath (takeBaseName, takeDirectory)
+import System.Exit (exitFailure, exitWith, ExitCode(..))
+import System.Process (system)
+import Paths_latte
 
 import ErrM
 import LexLatte
@@ -17,15 +20,16 @@ main :: IO ()
 main = do
   args <- getArgs
   case args of
-    [] -> compile stdin  -- TODO
-    [filename] -> withFile filename ReadMode compile
+    [filePath] -> withFile filePath ReadMode $ compile dirName fBase
+      where fBase = takeBaseName filePath
+            dirName = takeDirectory filePath
     _ -> usage
 
 usage :: IO ()
 usage = getProgName >>= (\s -> putStrLn $ "Usage: " ++ s ++ " FILENAME")
 
-compile :: Handle -> IO ()
-compile hFile = do
+compile :: String -> String -> Handle -> IO ()
+compile dirName fBase hFile = do
   fileContent <- hGetContents hFile
   case pProgram (tokens fileContent) of
     Bad s -> do
@@ -41,5 +45,22 @@ compile hFile = do
           exitFailure
         Nothing -> do
           hPutStrLn stderr "OK"
-          print $ toSsa $ generateLlvm prog
-          exitSuccess
+          let outBase = dirName ++ "/" ++ fBase ++ "."
+              outLlPath = outBase ++ "ll"
+              outBcPath = outBase ++ "bc"
+
+          writeFile outLlPath $ show (toSsa $ generateLlvm prog)
+
+          runtimePath <- getDataFileName "runtime.bc"
+          let llvmAs = unwords ["llvm-as -o", outBcPath, outLlPath]
+          putStrLn $ "$ " ++ llvmAs ++ "\n"
+          rcAs <- system llvmAs
+
+          case rcAs of
+            ExitSuccess -> do
+              let llvmLink =
+                    unwords ["llvm-link -o", outBcPath, outBcPath, runtimePath]
+              putStrLn $ "$ " ++ llvmLink
+              rcLink <- system llvmLink
+              exitWith rcLink
+            _ -> exitWith rcAs

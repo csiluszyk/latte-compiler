@@ -2,7 +2,7 @@
 module Main where
 import Control.Applicative
 import System.Environment (getArgs)
-import System.Exit (ExitCode (..), exitWith)
+import System.Exit (ExitCode(..), exitWith)
 import Test.Framework
 import Test.Framework.BlackBoxTest
 import Test.Framework.TestManager
@@ -12,14 +12,13 @@ main = do
   args <- getArgs
   ft <- frontendTestsBB
   (printSummary, ecode) <- runTestWithArgs' args ft
---  bt <- llvmTestsBB
---  (printSummary', ecode') <- runTestWithArgs' args bt
+  bt <- llvmTestsBB
+  (printSummary', ecode') <- runTestWithArgs' args bt
   printSummary
---  printSummary'
---  case ecode of
---    ExitSuccess -> exitWith ecode'
---    _ -> exitWith ecode
-  exitWith ecode  -- TODO
+  printSummary'
+  case ecode of
+    ExitSuccess -> exitWith ecode'
+    _ -> exitWith ecode
 
 frontendTestsBB :: IO TestSuite
 frontendTestsBB = makeTestSuite "Frontend Black Box Tests" <$>
