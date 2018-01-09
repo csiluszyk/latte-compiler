@@ -25,6 +25,7 @@ executable latc_llvm
                        GenLatte
                        LexLatte
                        LlvmLatte
+                       OptLatte
                        ParLatte
                        SsaLatte
                        TypeCheckLatte

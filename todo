@@ -1,25 +1,7 @@
-- Funkcje mogą być wzajemnie rekurencyjne
-- Wyrażenie logiczne zwracają typ boolean i są obliczane leniwie
-- Napisy mogą być konkatenowane przy pomocy operatora +.
-
-napisy -> + '\0' na końcu, +1 do length
-
-Ass -> nie musi być poprzedzający, może być jeszcze wcześniejszy
-
-- Są dostępne predefiniowane funkcje:
-    void printInt(int)
-    void printString(string)
-    void error()
-    int readInt()
-    string readString()
-
 - Wszystkie parametry są przekazywane przez wartość. - to test
 - Przekazanie napisu jako parametru odbywa sie poprzez przekazanie przez wartość referencji do napisu.
 
-- po br/goto zawsze label
-
 - change stack path in Makefile
-- change test/Main.hs
 
 OPTYMALIZACJE
 - nie usuwać wywołań funkcji - może mieć side effects

@@ -175,7 +175,7 @@ generateLlvmStmts (Cond _ e stmt : stmts) = do
   tell [Br val labT labF,
         Lab labT]
   generateLlvmStmts [stmt]
-  tell [Goto labF,  -- goto to avoid empty blocks
+  tell [Goto labF,
         Lab labF]
   generateLlvmStmts stmts
 
@@ -192,7 +192,7 @@ generateLlvmStmts (CondElse _ e stmtT stmtF : stmts) = do
   tell [Goto labEnd,
         Lab labF]
   generateLlvmStmts [stmtF]
-  tell [Goto labEnd,  -- goto to avoid empty blocks
+  tell [Goto labEnd,
         Lab labEnd]
   generateLlvmStmts stmts
 
@@ -202,7 +202,7 @@ generateLlvmStmts (While _ e stmt : stmts) = do
   let labCond = getLabel l
       labBody = getLabel $ l + 1
       labEnd = getLabel $ l + 2
-  tell [Goto labCond,  -- goto to avoid empty blocks
+  tell [Goto labCond,
         Lab labCond]
   val <- generateLlvmExp e
   tell [Br val labBody labEnd,
