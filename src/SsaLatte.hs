@@ -12,7 +12,7 @@ import LlvmLatte
 type SymTab = M.Map (Loc, Label) Loc
 type Cfg = M.Map Label [Label]
 
-type SsaLocalM a = StateT (SymTab, Label) (Reader Cfg) a  -- todo simplify
+type SsaLocalM a = State (SymTab, Label) a
 type SsaGlobalM a =
   WriterT [(Label, LlvmInst)] (StateT (SymTab, Label) (Reader Cfg)) a
 
@@ -28,7 +28,7 @@ toSsa (LlvmProg s e defines) = LlvmProg s e newDefines
         (globalSsa, phis) = fst $ runReader (runStateT (runWriterT (
           toSsaGlobalInsts localSsa)) (symTab, "")) cfg
         (localSsa, (symTab, _)) =
-          runReader (runStateT (toSsaLocalInsts insts) (M.empty, "")) cfg
+          runState (toSsaLocalInsts insts) (M.empty, "")
         cfg = generateCfg insts
 
 insertPhis :: [(Label, LlvmInst)] -> [LlvmInst] -> [LlvmInst]
