@@ -3,9 +3,9 @@ module GenLatte where
 import Control.Monad.Reader
 import Control.Monad.State
 import Control.Monad.Writer
+import Data.List
 import qualified Data.Map as M
 import Data.Maybe
-import Data.List
 
 import AbsLatte
 import UtilsLatte

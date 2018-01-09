@@ -11,6 +11,7 @@ import AbsLatte
 
 import TypeCheckLatte (typeCheck)
 import GenLatte (generateLlvm)
+import SsaLatte (toSsa)
 
 main :: IO ()
 main = do
@@ -40,5 +41,5 @@ compile hFile = do
           exitFailure
         Nothing -> do
           hPutStrLn stderr "OK"
-          print $ generateLlvm prog
+          print $ toSsa $ generateLlvm prog
           exitSuccess
