@@ -14,9 +14,6 @@ import LlvmLatte
 type SymTab = M.Map Ident (Loc, LlvmType)
 type StrMap = M.Map String Loc
 
-emptyLoc :: Loc
-emptyLoc = ""
-
 builtins :: [(Ident, (Loc, LlvmType))]
 builtins = [(Ident "printInt", (emptyLoc, LlvmVoid)),
             (Ident "printString", (emptyLoc, LlvmVoid)),

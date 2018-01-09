@@ -11,6 +11,14 @@ instance Show Value where
   show (BoolLit True) = unwords [boolType, "1"]
   show (BoolLit False) = unwords [boolType, "0"]
 
+emptyLoc :: Loc
+emptyLoc = ""
+
+boolType = "i1"
+strType = "i8*"
+intType = "i32"
+voidType = "void"
+
 type Label = String
 
 data LlvmProg = LlvmProg [StrConst] [Extern] [LlvmDef]
@@ -113,11 +121,6 @@ instance Show LlvmType where
   show LlvmBool = boolType
   show LlvmStr = strType
   show LlvmInt = intType
-
-boolType = "i1"
-strType = "i8*"
-intType = "i32"
-voidType = "void"
 
 data LlvmRelOp = Lth | Le | Gth | Ge | Equ | Ne
   deriving (Eq, Ord, Read)
