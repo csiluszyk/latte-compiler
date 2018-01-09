@@ -132,14 +132,49 @@ toSsaGlobalInst inst@(Lab lab) = do
   put (symTab, lab)
   return [inst]
 
---toSsaGlobalInst (RetInst val) = undefined
---toSsaGlobalInst (Br val _ _) = undefined
---toSsaGlobalInst (Call _ _ _ vals) = undefined
---toSsaGlobalInst (Mul _ val1 val2) = undefined
---toSsaGlobalInst (SDiv _ val1 val2) = undefined
---toSsaGlobalInst (SRem _ val1 val2) = undefined
---toSsaGlobalInst (Add _ val1 val2) = undefined
---toSsaGlobalInst (Sub _ val1 val2) = undefined
---toSsaGlobalInst (Icmp _ _ valT valF) = undefined
+toSsaGlobalInst (RetInst val) = do
+  (phi, upVal) <- updateValGlobal val
+  return $ phi ++ [RetInst upVal]
+toSsaGlobalInst (Br val l1 l2) = do
+  (phi, upVal) <- updateValGlobal val
+  return $ phi ++ [Br upVal l1 l2]
+toSsaGlobalInst (Call l t s vals) = do
+  (phis, upVals) <- mapAndUnzipM updateValGlobal vals
+  return $ concat phis ++ [Call l t s upVals]
+toSsaGlobalInst (Mul l val1 val2) = do
+  (phi1, upVal1) <- updateValGlobal val1
+  (phi2, upVal2) <- updateValGlobal val2
+  return $ phi1 ++ phi2 ++ [Mul l upVal1 upVal2]
+toSsaGlobalInst (SDiv l val1 val2) = do
+  (phi1, upVal1) <- updateValGlobal val1
+  (phi2, upVal2) <- updateValGlobal val2
+  return $ phi1 ++ phi2 ++ [SDiv l upVal1 upVal2]
+toSsaGlobalInst (SRem l val1 val2) = do
+  (phi1, upVal1) <- updateValGlobal val1
+  (phi2, upVal2) <- updateValGlobal val2
+  return $ phi1 ++ phi2 ++ [SRem l upVal1 upVal2]
+toSsaGlobalInst (Add l val1 val2) = do
+  (phi1, upVal1) <- updateValGlobal val1
+  (phi2, upVal2) <- updateValGlobal val2
+  return $ phi1 ++ phi2 ++ [Add l upVal1 upVal2]
+toSsaGlobalInst (Sub l val1 val2) = do
+  (phi1, upVal1) <- updateValGlobal val1
+  (phi2, upVal2) <- updateValGlobal val2
+  return $ phi1 ++ phi2 ++ [Sub l upVal1 upVal2]
+toSsaGlobalInst (Icmp l o valT valF) = do
+  (phiT, upValT) <- updateValGlobal valT
+  (phiF, upValF) <- updateValGlobal valF
+  return $ phiT ++ phiF ++ [Icmp l o upValT upValF]
 
 toSsaGlobalInst inst = return [inst]
+
+updateValGlobal :: Value -> SsaM ([LlvmInst], Value)
+updateValGlobal (Reg loc t) = do
+  (phi, upLoc) <- updateLocGlobal loc
+  return (phi, Reg upLoc t)
+updateValGlobal val = return ([], val)
+
+updateLocGlobal :: Loc -> SsaM ([LlvmInst], Loc)
+updateLocGlobal loc = do
+  (symTab, lab) <- get
+  return ([], loc)
