@@ -22,18 +22,26 @@ toSsa :: LlvmProg -> LlvmProg
 toSsa (LlvmProg s e defines) = LlvmProg s e newDefines
   where
     newDefines = map runSsaDef defines
-    runSsaDef (LlvmDef t l vs insts) = LlvmDef t l vs globalSsa
+    runSsaDef (LlvmDef t l vs insts) = LlvmDef t l vs ssa
       where
+        ssa = insertPhis (sort phis) globalSsa
         (globalSsa, phis) = fst $ runReader (runStateT (runWriterT (
-          toSsaGlobalInsts localSsa)) (symTab, "")) cfg  -- todo
+          toSsaGlobalInsts localSsa)) (symTab, "")) cfg
         (localSsa, (symTab, _)) =
           runReader (runStateT (toSsaLocalInsts insts) (M.empty, "")) cfg
         cfg = generateCfg insts
 
+insertPhis :: [(Label, LlvmInst)] -> [LlvmInst] -> [LlvmInst]
+insertPhis [] insts = insts
+insertPhis phis@((phiLab, phi) : rest) (l@(Lab lab) : insts)
+  | phiLab == lab = insertPhis rest (l : phi : insts)
+  | otherwise = l : insertPhis phis insts
+insertPhis phis (i : insts) = i : insertPhis phis insts
+
 generateCfg :: [LlvmInst] -> Cfg
 generateCfg insts = snd $ foldl foldInst ("", M.empty) insts
   where
-    foldInst (currLab, cfg) (Br _ lab1 lab2) = (currLab, newCfg)
+    foldInst (currLab, cfg) (Br _ lab1 lab2) = (currLab, newerCfg)
       where newCfg = updateCfg cfg lab1 currLab
             newerCfg = updateCfg newCfg lab2 currLab
     foldInst (currLab, cfg) (Goto lab) = (currLab, updateCfg cfg lab currLab)
@@ -111,9 +119,11 @@ toSsaLocalInst (Icmp l o valT valF) = do
 toSsaLocalInst inst = return [inst]
 
 updateValLocal :: Value -> SsaLocalM Value
-updateValLocal (Reg loc t) = do
-  upLoc <- updateLocLocal loc
-  return (Reg upLoc t)
+updateValLocal (Reg loc t)
+  | head (tail loc) /= 'a' = do  -- not local arg
+      upLoc <- updateLocLocal loc
+      return (Reg upLoc t)
+  | otherwise = return (Reg loc t)
 updateValLocal val = return val
 
 updateLocLocal :: Loc -> SsaLocalM Loc
@@ -172,32 +182,41 @@ toSsaGlobalInst (Icmp l o valT valF) = do
 toSsaGlobalInst inst = return inst
 
 updateValGlobal :: Value -> SsaGlobalM Value
-updateValGlobal (Reg loc t) = do
-  (_, lab) <- get
-  (_, newLoc) <- getGlobalLoc lab loc t
-  return $ Reg newLoc t
+updateValGlobal (Reg loc t)
+  | head (tail loc) /= 'a' = do  -- not local arg
+      (symTab, lab) <- get  -- todo
+      locs <- getGlobalLoc lab loc t
+      when (null locs) $
+        error $ "loc: " ++ loc ++ " lab: " ++ lab ++ "\n\n" ++ show symTab
+      let (_, newLoc) = head locs
+      return $ Reg newLoc t
+  | otherwise = return $ Reg loc t
 updateValGlobal val = return val
 
-getGlobalLoc :: Label -> Loc -> LlvmType -> SsaGlobalM (Label, Loc)
+getGlobalLoc :: Label -> Loc -> LlvmType -> SsaGlobalM [(Label, Loc)]
 getGlobalLoc currLab loc t = do
   cfg <- ask
   (symTab, lab) <- get
   case M.lookup (loc, currLab) symTab of
-    Just newLoc -> return (currLab, newLoc)
+    Just newLoc -> return [(currLab, newLoc)]
     Nothing -> do
       put (M.insert (loc, currLab) emptyLoc symTab, lab)
-      preds <- mapM getFromPreds (M.findWithDefault [] currLab cfg)
+      preds <- concatMapM getFromPreds (M.findWithDefault [] currLab cfg)
       case preds of
-        [] -> error $ "internal error: preds empty: " ++ loc ++ " " ++ currLab
+        [] -> return []
         [(_, newLoc)] -> do
           when (newLoc /= emptyLoc) $
             put (M.insert (loc, currLab) newLoc symTab, lab)
-          return (currLab, newLoc)
-        [(labA, locA), (labB, locB)] -> do
-          -- todo: eliminate redundant phi
-          let newLoc = locA ++ "_" ++ locB
-          put (M.insert (loc, currLab) newLoc symTab, lab)
-          tell [(currLab, Phi newLoc t locA labA locB labB)]
-          return (currLab, newLoc)
+          return [(currLab, newLoc)]
+        [(labA, locA), (labB, locB)]
+          | all (== emptyLoc) [locA, locB] -> error "internal error: all empty"
+          | locA == emptyLoc -> return [(currLab, locB)]
+          | locB == emptyLoc -> return [(currLab, locA)]
+          | locA == locB -> return [(currLab, locA)]
+          | otherwise -> do
+            let newLoc = locA ++ "_" ++ tail locB
+            put (M.insert (loc, currLab) newLoc symTab, lab)
+            tell [(currLab, Phi newLoc t locA labA locB labB)]
+            return [(currLab, newLoc)]
         _ -> error "internal error: to many preds found"
       where getFromPreds pLab = getGlobalLoc pLab loc t
