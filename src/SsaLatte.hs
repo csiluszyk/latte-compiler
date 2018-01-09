@@ -184,39 +184,36 @@ toSsaGlobalInst inst = return inst
 updateValGlobal :: Value -> SsaGlobalM Value
 updateValGlobal (Reg loc t)
   | head (tail loc) /= 'a' = do  -- not local arg
-      (symTab, lab) <- get  -- todo
-      locs <- getGlobalLoc lab loc t
-      when (null locs) $
-        error $ "loc: " ++ loc ++ " lab: " ++ lab ++ "\n\n" ++ show symTab
-      let (_, newLoc) = head locs
+      (symTab, lab) <- get
+      (_, newLoc) <- getGlobalLoc lab loc t
       return $ Reg newLoc t
   | otherwise = return $ Reg loc t
 updateValGlobal val = return val
 
-getGlobalLoc :: Label -> Loc -> LlvmType -> SsaGlobalM [(Label, Loc)]
+getGlobalLoc :: Label -> Loc -> LlvmType -> SsaGlobalM (Label, Loc)
 getGlobalLoc currLab loc t = do
   cfg <- ask
   (symTab, lab) <- get
   case M.lookup (loc, currLab) symTab of
-    Just newLoc -> return [(currLab, newLoc)]
+    Just newLoc -> return (currLab, newLoc)
     Nothing -> do
       put (M.insert (loc, currLab) emptyLoc symTab, lab)
-      preds <- concatMapM getFromPreds (M.findWithDefault [] currLab cfg)
+      preds <- mapM getFromPreds (M.findWithDefault [] currLab cfg)
       case preds of
-        [] -> return []
+        [] -> error "internal error: empty preds"
         [(_, newLoc)] -> do
           when (newLoc /= emptyLoc) $
             put (M.insert (loc, currLab) newLoc symTab, lab)
-          return [(currLab, newLoc)]
+          return (currLab, newLoc)
         [(labA, locA), (labB, locB)]
           | all (== emptyLoc) [locA, locB] -> error "internal error: all empty"
-          | locA == emptyLoc -> return [(currLab, locB)]
-          | locB == emptyLoc -> return [(currLab, locA)]
-          | locA == locB -> return [(currLab, locA)]
+          | locA == emptyLoc -> return (currLab, locB)
+          | locB == emptyLoc -> return (currLab, locA)
+          | locA == locB -> return (currLab, locA)
           | otherwise -> do
             let newLoc = locA ++ "_" ++ tail locB
             put (M.insert (loc, currLab) newLoc symTab, lab)
             tell [(currLab, Phi newLoc t locA labA locB labB)]
-            return [(currLab, newLoc)]
+            return (currLab, newLoc)
         _ -> error "internal error: to many preds found"
       where getFromPreds pLab = getGlobalLoc pLab loc t
