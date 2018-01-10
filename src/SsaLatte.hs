@@ -177,7 +177,7 @@ getGlobalLoc currLab loc t = do
   cfg <- ask
   (symTab, lab) <- get
   -- In symTab we only have local values so at the top level.
-  -- todo: two symtabs: local and global
+  -- XXX: Posible multible lookup for the same variable.
   if currLab == lab then
     _getGlobalLoc currLab loc t cfg symTab lab
   else

@@ -1,5 +1,6 @@
 @dnl = internal constant [4 x i8] c"%d\0A\00"
 @d   = internal constant [3 x i8] c"%d\00"
+@s   = internal constant [2 x i8] c" \00"
 @.str = internal constant [15 x i8] c"runtime error\0A\00"
 
 declare void @exit(i32)
@@ -40,8 +41,10 @@ entry:
     %res = alloca i32
     %t1 = getelementptr [3 x i8], [3 x i8]* @d, i32 0, i32 0
     call i32 (i8*, ...) @scanf(i8* %t1, i32* %res)
-    %t2 = load i32, i32* %res
-    ret i32 %t2
+    %t2 = getelementptr [2 x i8], [2 x i8]* @s, i32 0, i32 0
+    call i32 (i8*, ...) @scanf(i8* %t1)  ; ignore dangling whitespaces
+    %t3 = load i32, i32* %res
+    ret i32 %t3
 }
 
 define i8* @_concat(i8* %s1, i8* %s2) {
