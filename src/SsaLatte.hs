@@ -111,11 +111,8 @@ updateValLocal val = return val
 updateLocLocal :: Loc -> SsaLocalM Loc
 updateLocLocal loc = do
   (symTab, lab) <- get
-  case M.lookup (loc, lab) symTab of
-    Just newLoc
-      | newLoc == loc -> return loc
-      | otherwise -> updateLocLocal newLoc
-    Nothing -> return loc
+  let newLoc = getFinalLoc loc lab symTab
+  return newLoc
 
 
 toSsaGlobalInsts :: [LlvmInst] -> SsaGlobalM [LlvmInst]
@@ -166,36 +163,22 @@ toSsaGlobalInst inst = return inst
 updateValGlobal :: Value -> SsaGlobalM Value
 updateValGlobal (Reg loc t)
   | head (tail loc) == 't' = do  -- tmp arg to replace
+      cfg <- ask
       (symTab, lab) <- get
-      (_, newLoc) <- getGlobalLoc lab loc t
+      let preds = M.findWithDefault [] lab cfg
+      (_, newLoc) <- getGlobalLoc lab loc t preds
       return $ Reg newLoc t
   | otherwise = return $ Reg loc t
 updateValGlobal val = return val
 
-getGlobalLoc :: Label -> Loc -> LlvmType -> SsaGlobalM (Label, Loc)
-getGlobalLoc currLab loc t = do
-  cfg <- ask
+getGlobalLoc :: Label -> Loc -> LlvmType -> [Label] -> SsaGlobalM (Label, Loc)
+getGlobalLoc currLab loc t preds = do
   (symTab, lab) <- get
-  -- In symTab we only have local values so at the top level.
-  -- XXX: Posible multible lookup for the same variable.
-  if currLab == lab then
-    _getGlobalLoc currLab loc t cfg symTab lab
-  else
-    case M.lookup (loc, currLab) symTab of
-      Just newLoc -> return (currLab, newLoc)
-      Nothing -> do
-        put (M.insert (loc, currLab) emptyLoc symTab, lab)
-        _getGlobalLoc currLab loc t cfg symTab lab
-
-_getGlobalLoc ::
-  Label -> Loc -> LlvmType -> Cfg -> SymTab -> Label -> SsaGlobalM (Label, Loc)
-_getGlobalLoc currLab loc t cfg symTab lab = do
-  preds <- mapM getFromPreds (M.findWithDefault [] currLab cfg)
-  case preds of
-    [] -> error "internal error: empty preds"
+  predsLocs <- mapM (\p -> _getGlobalLoc p loc t) preds
+  case predsLocs of
+    [] -> error "internal error: empty preds or loc not found"
     [(_, newLoc)] -> do
-      when (newLoc /= emptyLoc) $
-        put (M.insert (loc, currLab) newLoc symTab, lab)
+      put (M.insert (loc, currLab) newLoc symTab, lab)
       return (currLab, newLoc)
     [(labA, locA), (labB, locB)]
       | all (== emptyLoc) [locA, locB] -> error "internal error: all empty"
@@ -208,4 +191,22 @@ _getGlobalLoc currLab loc t cfg symTab lab = do
         tell [(currLab, Phi newLoc t locA labA locB labB)]
         return (currLab, newLoc)
     _ -> error "internal error: to many preds found"
-  where getFromPreds pLab = getGlobalLoc pLab loc t
+
+_getGlobalLoc :: Label -> Loc -> LlvmType -> SsaGlobalM (Label, Loc)
+_getGlobalLoc currLab loc t = do
+  (symTab, lab) <- get
+  case M.lookup (loc, currLab) symTab of
+    Just newLoc -> return (currLab, getFinalLoc newLoc currLab symTab)
+    Nothing -> do
+      put (M.insert (loc, currLab) emptyLoc symTab, lab)
+      cfg <- ask
+      let preds = M.findWithDefault [] currLab cfg
+      getGlobalLoc currLab loc t preds
+
+getFinalLoc :: Loc -> Label -> SymTab -> Loc
+getFinalLoc loc lab symTab =
+  case M.lookup (loc, lab) symTab of
+    Just newLoc
+      | newLoc == loc -> loc
+      | otherwise -> getFinalLoc newLoc lab symTab
+    Nothing -> loc

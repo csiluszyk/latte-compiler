@@ -16,11 +16,16 @@ optimizeInsts :: [LlvmInst] -> [LlvmInst]
 optimizeInsts = removeEmpty
 
 removeEmpty :: [LlvmInst] -> [LlvmInst]
-removeEmpty insts = nonEmpty
+-- todo: add only if first has predecessors
+removeEmpty insts = Lab "%entry" : Goto firstLab : nonEmpty
   where
     blocks = splitBlocks insts
     (nonEmptyBlocks, labM) = removeEmptyBlocks blocks
     nonEmpty = removeEmptyInsts (concat nonEmptyBlocks) labM
+    firstLab = getLab $ head nonEmpty
+
+getLab :: LlvmInst -> Label
+getLab (Lab lab) = lab
 
 -- todo: converge?
 

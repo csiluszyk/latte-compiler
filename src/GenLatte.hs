@@ -333,6 +333,7 @@ generateLlvmExp (EAnd _ e1 e2) = do
   val2 <- generateLlvmExp e2
   val2Loc <- getValLoc val1
   tell [AssInst LlvmBool tmpLoc val2Loc,
+        Goto labEnd,
         Lab labEnd]
   return $ Reg tmpLoc LlvmBool
 
@@ -353,6 +354,7 @@ generateLlvmExp (EOr _ e1 e2) = do
   val2 <- generateLlvmExp e2
   val2Loc <- getValLoc val1
   tell [AssInst LlvmBool tmpLoc val2Loc,
+        Goto labEnd,
         Lab labEnd]
   return $ Reg tmpLoc LlvmBool
 
