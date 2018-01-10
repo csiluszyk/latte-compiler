@@ -1,11 +1,11 @@
 int main() {
     if (false) {
         {
-            return 4;
+            return 1;
         }
     } else {
         {
-            return 2;
+            return 0;
         }
     }
 }
@@ -32,9 +32,13 @@ int h() {
         {
             {
                 if (true) {
-                    return 4;
-                } else
-                    return 2;
+                    if (true) {
+                        return 4;
+                    } else
+                        return 2;
+                } else {
+                    return 5;
+                }
             }
         }
     }

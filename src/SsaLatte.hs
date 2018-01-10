@@ -73,54 +73,36 @@ toSsaLocalInst (Br val l1 l2) = do
   return [Br upVal l1 l2]
 toSsaLocalInst (Call l t s vals) = do
   upVals <- mapM updateValLocal vals
-  (symTab, lab) <- get
-  put (M.insert (l, lab) l symTab, lab)
   return [Call l t s upVals]
-toSsaLocalInst strLit@(StrLit l s sL) = do
-  (symTab, lab) <- get
-  put (M.insert (l, lab) l symTab, lab)
-  return [strLit]
 toSsaLocalInst (Mul l val1 val2) = do
   upVal1 <- updateValLocal val1
   upVal2 <- updateValLocal val2
-  (symTab, lab) <- get
-  put (M.insert (l, lab) l symTab, lab)
   return [Mul l upVal1 upVal2]
 toSsaLocalInst (SDiv l val1 val2) = do
   upVal1 <- updateValLocal val1
   upVal2 <- updateValLocal val2
-  (symTab, lab) <- get
-  put (M.insert (l, lab) l symTab, lab)
   return [SDiv l upVal1 upVal2]
 toSsaLocalInst (SRem l val1 val2) = do
   upVal1 <- updateValLocal val1
   upVal2 <- updateValLocal val2
-  (symTab, lab) <- get
-  put (M.insert (l, lab) l symTab, lab)
   return [SRem l upVal1 upVal2]
 toSsaLocalInst (Add l val1 val2) = do
   upVal1 <- updateValLocal val1
   upVal2 <- updateValLocal val2
-  (symTab, lab) <- get
-  put (M.insert (l, lab) l symTab, lab)
   return [Add l upVal1 upVal2]
 toSsaLocalInst (Sub l val1 val2) = do
   upVal1 <- updateValLocal val1
   upVal2 <- updateValLocal val2
-  (symTab, lab) <- get
-  put (M.insert (l, lab) l symTab, lab)
   return [Sub l upVal1 upVal2]
 toSsaLocalInst (Icmp l o valT valF) = do
   upValT <- updateValLocal valT
   upValF <- updateValLocal valF
-  (symTab, lab) <- get
-  put (M.insert (l, lab) l symTab, lab)
   return [Icmp l o upValT upValF]
 toSsaLocalInst inst = return [inst]
 
 updateValLocal :: Value -> SsaLocalM Value
 updateValLocal (Reg loc t)
-  | head (tail loc) /= 'a' = do  -- not local arg
+  | head (tail loc) == 't' = do  -- tmp arg to replace
       upLoc <- updateLocLocal loc
       return (Reg upLoc t)
   | otherwise = return (Reg loc t)
@@ -183,7 +165,7 @@ toSsaGlobalInst inst = return inst
 
 updateValGlobal :: Value -> SsaGlobalM Value
 updateValGlobal (Reg loc t)
-  | head (tail loc) /= 'a' = do  -- not local arg
+  | head (tail loc) == 't' = do  -- tmp arg to replace
       (symTab, lab) <- get
       (_, newLoc) <- getGlobalLoc lab loc t
       return $ Reg newLoc t
@@ -194,26 +176,36 @@ getGlobalLoc :: Label -> Loc -> LlvmType -> SsaGlobalM (Label, Loc)
 getGlobalLoc currLab loc t = do
   cfg <- ask
   (symTab, lab) <- get
-  case M.lookup (loc, currLab) symTab of
-    Just newLoc -> return (currLab, newLoc)
-    Nothing -> do
-      put (M.insert (loc, currLab) emptyLoc symTab, lab)
-      preds <- mapM getFromPreds (M.findWithDefault [] currLab cfg)
-      case preds of
-        [] -> error "internal error: empty preds"
-        [(_, newLoc)] -> do
-          when (newLoc /= emptyLoc) $
-            put (M.insert (loc, currLab) newLoc symTab, lab)
-          return (currLab, newLoc)
-        [(labA, locA), (labB, locB)]
-          | all (== emptyLoc) [locA, locB] -> error "internal error: all empty"
-          | locA == emptyLoc -> return (currLab, locB)
-          | locB == emptyLoc -> return (currLab, locA)
-          | locA == locB -> return (currLab, locA)
-          | otherwise -> do
-            let newLoc = locA ++ "_" ++ tail locB
-            put (M.insert (loc, currLab) newLoc symTab, lab)
-            tell [(currLab, Phi newLoc t locA labA locB labB)]
-            return (currLab, newLoc)
-        _ -> error "internal error: to many preds found"
-      where getFromPreds pLab = getGlobalLoc pLab loc t
+  -- In symTab we only have local values so at the top level.
+  -- todo: two symtabs: local and global
+  if currLab == lab then
+    _getGlobalLoc currLab loc t cfg symTab lab
+  else
+    case M.lookup (loc, currLab) symTab of
+      Just newLoc -> return (currLab, newLoc)
+      Nothing -> do
+        put (M.insert (loc, currLab) emptyLoc symTab, lab)
+        _getGlobalLoc currLab loc t cfg symTab lab
+
+_getGlobalLoc ::
+  Label -> Loc -> LlvmType -> Cfg -> SymTab -> Label -> SsaGlobalM (Label, Loc)
+_getGlobalLoc currLab loc t cfg symTab lab = do
+  preds <- mapM getFromPreds (M.findWithDefault [] currLab cfg)
+  case preds of
+    [] -> error "internal error: empty preds"
+    [(_, newLoc)] -> do
+      when (newLoc /= emptyLoc) $
+        put (M.insert (loc, currLab) newLoc symTab, lab)
+      return (currLab, newLoc)
+    [(labA, locA), (labB, locB)]
+      | all (== emptyLoc) [locA, locB] -> error "internal error: all empty"
+      | locA == emptyLoc -> return (currLab, locB)
+      | locB == emptyLoc -> return (currLab, locA)
+      | locA == locB -> return (currLab, locA)
+      | otherwise -> do
+        let newLoc = locA ++ "_" ++ tail locB
+        put (M.insert (loc, currLab) newLoc symTab, lab)
+        tell [(currLab, Phi newLoc t locA labA locB labB)]
+        return (currLab, newLoc)
+    _ -> error "internal error: to many preds found"
+  where getFromPreds pLab = getGlobalLoc pLab loc t

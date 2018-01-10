@@ -124,9 +124,9 @@ generateLlvmStmts (Decl pos dType (item : items) : stmts) = do
   put (n + 1, l)
   -- We can expand other declarations as Decl of [item] is same as [Decl item].
   let decls = map (\nItem -> Decl pos dType [nItem]) items
-      newLoc = getLoc n
-  tell [AssInst (toLlvmType dType) newLoc valLoc]
-  let newEnv (s, m) = (M.insert ident (newLoc, toLlvmType dType) s, m)
+      tmpLoc = getTmpLoc n
+  tell [AssInst (toLlvmType dType) tmpLoc valLoc]
+  let newEnv (s, m) = (M.insert ident (tmpLoc, toLlvmType dType) s, m)
   local newEnv $ generateLlvmStmts (decls ++ stmts)
   return ()
 
@@ -321,40 +321,40 @@ generateLlvmExp (EAnd _ e1 e2) = do
   val1Loc <- getValLoc val1
   (n, l) <- get
   put (n + 1, l + 3)
-  let newLoc = getLoc n
+  let tmpLoc = getTmpLoc n
       labE1F = getLabel l
       labE2 = getLabel $ l + 1
       labEnd = getLabel $ l + 2
   tell [Br val1 labE2 labE1F,
         Lab labE1F,
-        AssInst LlvmBool newLoc val1Loc,
+        AssInst LlvmBool tmpLoc val1Loc,
         Goto labEnd,
         Lab labE2]
   val2 <- generateLlvmExp e2
   val2Loc <- getValLoc val1
-  tell [AssInst LlvmBool newLoc val2Loc,
+  tell [AssInst LlvmBool tmpLoc val2Loc,
         Lab labEnd]
-  return $ Reg newLoc LlvmBool
+  return $ Reg tmpLoc LlvmBool
 
 generateLlvmExp (EOr _ e1 e2) = do
   val1 <- generateLlvmExp e1
   val1Loc <- getValLoc val1
   (n, l) <- get
   put (n + 1, l + 3)
-  let newLoc = getLoc n
+  let tmpLoc = getTmpLoc n
       labE1T = getLabel l
       labE2 = getLabel $ l + 1
       labEnd = getLabel $ l + 2
   tell [Br val1 labE1T labE2,
         Lab labE1T,
-        AssInst LlvmBool newLoc val1Loc,
+        AssInst LlvmBool tmpLoc val1Loc,
         Goto labEnd,
         Lab labE2]
   val2 <- generateLlvmExp e2
   val2Loc <- getValLoc val1
-  tell [AssInst LlvmBool newLoc val2Loc,
+  tell [AssInst LlvmBool tmpLoc val2Loc,
         Lab labEnd]
-  return $ Reg newLoc LlvmBool
+  return $ Reg tmpLoc LlvmBool
 
 
 -- Utils
@@ -376,6 +376,10 @@ _getLoc c n = '%' : c : show (n + 1)
 
 getLoc :: Int -> Loc
 getLoc n = _getLoc 'r' n
+
+-- Returns loc which will be removed after SSA phase.
+getTmpLoc :: Int -> Loc
+getTmpLoc n = _getLoc 't' n
 
 getArgLoc :: Int -> Loc
 getArgLoc n = _getLoc 'a' n

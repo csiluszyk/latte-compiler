@@ -11,6 +11,9 @@ instance Show Value where
   show (BoolLit True) = unwords [boolType, "1"]
   show (BoolLit False) = unwords [boolType, "0"]
 
+emptyLab :: Label
+emptyLab = ""
+
 emptyLoc :: Loc
 emptyLoc = ""
 

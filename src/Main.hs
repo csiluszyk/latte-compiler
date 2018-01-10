@@ -15,6 +15,7 @@ import AbsLatte
 import TypeCheckLatte (typeCheck)
 import GenLatte (generateLlvm)
 import SsaLatte (toSsa)
+import OptLatte (optimize)
 
 main :: IO ()
 main = do
@@ -49,7 +50,7 @@ compile dirName fBase hFile = do
               outLlPath = outBase ++ "ll"
               outBcPath = outBase ++ "bc"
 
-          writeFile outLlPath $ show (toSsa $ generateLlvm prog)
+          writeFile outLlPath $ show (optimize $ toSsa $ generateLlvm prog)
 
           runtimePath <- getDataFileName "runtime.bc"
           let llvmAs = unwords ["llvm-as -o", outBcPath, outLlPath]
