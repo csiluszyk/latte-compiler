@@ -34,7 +34,7 @@ generateLlvm (Program _ topDefs) = LlvmProg strConsts externs defines
     foldPutTopDefs globals (FnDef _ fRet fName _ _) =
       M.insert fName (emptyLoc, toLlvmType fRet) globals
     globals = foldl foldPutTopDefs (M.fromList builtins) topDefs
-    strLit = nub $ "" : concatMap getStrLiteralsTopDef topDefs
+    strLit = nub $ "\"\"" : concatMap getStrLiteralsTopDef topDefs
     strLitLoc = map (\(s, i) -> (s, "@.str." ++ show i)) $ zip strLit [0 ..]
     strConsts = map (\(s, l) -> StrConst l s) strLitLoc
     strLitMap = M.fromList strLitLoc
@@ -86,7 +86,7 @@ getStrLiteralsItem _ = []
 
 getStrLiteralsExp :: Expr Pos -> [String]
 getStrLiteralsExp (EApp _ _ es) = concatMap getStrLiteralsExp es
-getStrLiteralsExp (EString _ s) = [tail $ init s]  -- "" are included in s
+getStrLiteralsExp (EString _ s) = [s]
 getStrLiteralsExp (Neg _ e) = getStrLiteralsExp e
 getStrLiteralsExp (Not _ e) = getStrLiteralsExp e
 getStrLiteralsExp (EMul _ e1 _ e2) =
@@ -241,7 +241,7 @@ generateLlvmExp (EString _ s) = do
   (_, strLitMap) <- ask
   (n, l) <- get
   put (n + 1, l)
-  let bareS = tail $ init s  -- "" are included in s
+  let bareS = s
       sLoc = fromJust $ M.lookup bareS strLitMap
       newLoc = getLoc n
   tell [StrLit newLoc bareS sLoc]

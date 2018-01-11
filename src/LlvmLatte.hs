@@ -1,6 +1,7 @@
 module LlvmLatte where
 
 import Data.List
+import qualified Data.Map as M
 
 type Loc = String
 data Value = Reg Loc LlvmType | IntLit Integer | BoolLit Bool
@@ -33,9 +34,10 @@ instance Show LlvmProg where
 data StrConst = StrConst Loc String
   deriving (Eq, Ord, Read)
 instance Show StrConst where
-  show (StrConst sLoc s) = unwords [sLoc, "= internal constant", sType, sZ]
-    where sType = "[" ++ show (length s + 1) ++ " x " ++ "i8" ++ "]"
-          sZ = "c\"" ++ s ++ "\\00\""
+  show (StrConst sLoc s) = unwords [sLoc, "= internal constant", sType, sConst]
+    where sType = "[" ++ show size ++ " x " ++ "i8" ++ "]"
+          sConst = "c\"" ++ escapedStr ++ "\""
+          (escapedStr, size) = escapeStr s
 
 data Extern = Extern LlvmType Loc [LlvmType]
   deriving (Eq, Ord, Read)
@@ -106,7 +108,8 @@ instance Show LlvmInst where
     showLocLab loc lab = "[" ++ loc ++ ", " ++ lab ++ "]"
     showGetelementptrStr s sLoc =
       "getelementptr " ++ unwordsSep [sSize, sSize ++ "* " ++ sLoc, zero, zero]
-      where sSize = "[" ++ show (length s + 1) ++ " x " ++ "i8" ++ "]"
+      where sSize = "[" ++ show size ++ " x " ++ "i8" ++ "]"
+            (_, size) = escapeStr s
             zero = show $ IntLit 0
     showVal (Reg loc _) = loc
     showVal (IntLit i) = show i
@@ -137,3 +140,23 @@ instance Show LlvmRelOp where
 
 unwordsSep :: [String] -> String
 unwordsSep = intercalate ", "
+
+-- Returns escaped string and its final size.
+escapeStr :: String -> (String, Int)
+escapeStr s = _escapeStr $ tail $ init s
+_escapeStr "" = ("\\00", 1)
+_escapeStr (a : b : str) = (escapedPart ++ escapedStr, size + 1)
+  where
+    (escapedPart, rest) = case M.lookup [a, b] escapeMap of
+      Just repl -> (repl, str)
+      Nothing -> ([a], b : str)
+    (escapedStr, size) = _escapeStr rest
+_escapeStr (c : str) = (c : escapedStr, size + 1)
+  where (escapedStr, size) = _escapeStr str
+
+escapeMap = M.fromList [
+  ("\\t", "\\09"),
+  ("\\n", "\\0A"),
+  ("\\\"", "\\22"),
+  ("\\'", "\\27"),
+  ("\\\\", "\\5C")]

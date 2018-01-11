@@ -37,6 +37,7 @@ insertPhis phis@((phiLab, phi) : rest) (l@(Lab lab) : insts)
   | phiLab == lab = insertPhis rest (l : phi : insts)
   | otherwise = l : insertPhis phis insts
 insertPhis phis (i : insts) = i : insertPhis phis insts
+insertPhis p i = error $ show p ++ " " ++ show i --todo
 
 generateCfg :: [LlvmInst] -> Cfg
 generateCfg insts = snd $ foldl foldInst ("", M.empty) insts
