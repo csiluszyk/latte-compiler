@@ -115,7 +115,7 @@ instance Show LlvmInst where
     showVal (IntLit i) = show i
     showVal (BoolLit True) = "1"
     showVal (BoolLit False) = "0"
-    sep = "    "
+    sep = "   "
 
 showFun :: String -> [Value] -> String
 showFun name vals = "@" ++ name ++ "(" ++ unwordsSep (map show vals) ++ ")"

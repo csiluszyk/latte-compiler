@@ -27,7 +27,7 @@ toSsa (LlvmProg s e defines) = LlvmProg s e newDefines
     newDefines = map runSsaDef defines
     runSsaDef (LlvmDef t l vs insts) = LlvmDef t l vs ssa
       where
-        ssa = removeEmpty (insertPhis (sort phis) globalSsa) globalSymTab cfg
+        ssa = fillEmpty (insertPhis (sort phis) globalSsa) t
         ((globalSsa, phis), (globalSymTab, _)) = runReader (runStateT
           (runWriterT (toSsaGlobalInsts localSsa)) (localSymTab, "")) cfg
         (localSsa, (localSymTab, _)) =
@@ -44,67 +44,19 @@ insertPhis phis (i : insts) = i : insertPhis phis insts
 insertPhis p i = error $ show p ++ " " ++ show i --todo
 
 
-removeEmpty :: [LlvmInst] -> SymTab -> Cfg -> [LlvmInst]
--- todo: add only if first has predecessors
-removeEmpty insts symTab cfg = Lab "%entry" : Goto firstLab : nonEmpty
-  where
-    blocks = splitBlocks insts
-    (nonEmptyBlocks, labM) = removeEmptyBlocks blocks
-    nonEmpty = removeEmptyInsts (concat nonEmptyBlocks) labM symTab cfg ""
-    firstLab = getLab $ head nonEmpty
+fillEmpty :: [LlvmInst] -> LlvmType -> [LlvmInst]
+fillEmpty insts t = concat $ fillEmptyBlocks (splitBlocks insts) t
 
-getLab :: LlvmInst -> Label
-getLab (Lab lab) = lab
+fillEmptyBlocks :: [[LlvmInst]] -> LlvmType -> [[LlvmInst]]
+fillEmptyBlocks [] _ = []
+fillEmptyBlocks ([Lab l] : blocks) t = case t of
+    LlvmVoid -> [Lab l, VRetInst] : fillEmptyBlocks blocks t
+    LlvmBool -> [Lab l, RetInst (BoolLit False)] : fillEmptyBlocks blocks t
+    LlvmInt -> [Lab l, RetInst (IntLit 0)] : fillEmptyBlocks blocks t
+    LlvmStr ->
+      [Lab l, RetInst (Reg "@.str.0" LlvmStr)] : fillEmptyBlocks blocks t
+fillEmptyBlocks (block : blocks) t = block : fillEmptyBlocks blocks t
 
-removeEmptyBlocks :: [[LlvmInst]] -> ([[LlvmInst]], LabM)
-removeEmptyBlocks [] = ([], M.empty)
-removeEmptyBlocks ([Lab lEmp] : blocks) =
-  (newBlocks, M.insert lEmp emptyLab labM)
-  where (newBlocks, labM) = removeEmptyBlocks blocks
-removeEmptyBlocks ([Lab lSrc, Goto lDst] : blocks) =
-  (newBlocks, M.insert lSrc lDst labM)
-  where (newBlocks, labM) = removeEmptyBlocks blocks
-removeEmptyBlocks (b : blocks) = (b : newBlocks, labM)
-  where (newBlocks, labM) = removeEmptyBlocks blocks
-
-removeEmptyInsts :: [LlvmInst] -> LabM -> SymTab -> Cfg -> Label -> [LlvmInst]
-removeEmptyInsts [] _ _ _ _ = []
-removeEmptyInsts (Goto lab : insts) labM symTab cfg l
-  | newLab == emptyLab = removeEmptyInsts insts labM symTab cfg l
-  | otherwise = Goto newLab : removeEmptyInsts insts labM symTab cfg l
-  where newLab = _getFinalLab lab labM
-removeEmptyInsts (Br v lab1 lab2 : insts) labM symTab cfg l
-  | all (== emptyLab) [nLab1, nLab2] = removeEmptyInsts insts labM symTab cfg l
-  | nLab1 == emptyLab = Goto nLab2 : removeEmptyInsts insts labM symTab cfg l
-  | nLab2 == emptyLab = Goto nLab1 : removeEmptyInsts insts labM symTab cfg l
-  | otherwise = Br v nLab1 nLab2 : removeEmptyInsts insts labM symTab cfg l
-  where nLab1 = _getFinalLab lab1 labM
-        nLab2 = _getFinalLab lab2 labM
-removeEmptyInsts (Phi loc t loc1 _ loc2 _ : insts) labM symTab cfg l =
-  -- todo: find predecessor in which loc is in scope
-  Phi loc t loc1 lab1 loc2 lab2 : removeEmptyInsts insts labM symTab cfg l
-  where
-    preds = M.findWithDefault [] l cfg
-    pred1 = head preds
-    pred2 = last preds
-    (lab1, lab2) =
-      case (M.lookup (loc1, pred1) symTab, M.lookup (loc1, pred2) symTab,
-            M.lookup (loc2, pred1) symTab, M.lookup (loc2, pred2) symTab) of
-        (Just _, Nothing, Nothing, Just _) -> (pred1, pred2)
-        (Nothing, Just _, Just _, Nothing) -> (pred2, pred1)
-        (Just _, Nothing, Just _, Just _) -> (pred1, pred2)
-        (Just _, Just _, Just _, Nothing) -> (pred2, pred1)
-        (_, _, _, _) -> error "internal error: couldn't find new phi labels"
-removeEmptyInsts (Lab lab: insts) labM symTab cfg _ =
-  Lab lab : removeEmptyInsts insts labM symTab cfg lab
-removeEmptyInsts (inst : insts) labM symTab cfg l =
-  inst : removeEmptyInsts insts labM symTab cfg l
-
-_getFinalLab :: Label -> LabM -> Label
-_getFinalLab lab labM
-  | nextLab == lab = lab
-  | otherwise = _getFinalLab nextLab labM
-  where nextLab = M.findWithDefault lab lab labM
 
 splitBlocks :: [LlvmInst] -> [[LlvmInst]]
 splitBlocks insts = _splitBlocks insts [] []
