@@ -88,17 +88,20 @@ toSsaLocalInsts :: [LlvmInst] -> SsaLocalM [LlvmInst]
 toSsaLocalInsts = concatMapM toSsaLocalInst
 
 toSsaLocalInst :: LlvmInst -> SsaLocalM [LlvmInst]
-toSsaLocalInst (AssInst _ lLoc rLoc) = do
+toSsaLocalInst inst@(Lab lab) = do
+  (symTab, _) <- get
+  put (symTab, lab)
+  return [inst]
+toSsaLocalInst (AssInst t lLoc rLoc) = do
   (symTab, lab) <- get
   let newSymTab
         | lLoc == rLoc = symTab
         | otherwise = M.insert (lLoc, lab) rLoc symTab
   put (newSymTab, lab)
-  return []
-toSsaLocalInst inst@(Lab lab) = do
-  (symTab, _) <- get
-  put (symTab, lab)
-  return [inst]
+  upVal <- updateValLocal (Reg rLoc t)
+  let upLoc = case upVal of
+                Reg upLoc _ -> upLoc  -- only this case is posssible
+  return [AssInst t lLoc upLoc]
 toSsaLocalInst (RetInst val) = do
   upVal <- updateValLocal val
   return [RetInst upVal]
@@ -150,49 +153,51 @@ updateLocLocal loc = do
 
 
 toSsaGlobalInsts :: [LlvmInst] -> SsaGlobalM [LlvmInst]
-toSsaGlobalInsts = mapM toSsaGlobalInst
+toSsaGlobalInsts = concatMapM toSsaGlobalInst
 
-toSsaGlobalInst :: LlvmInst -> SsaGlobalM LlvmInst
+toSsaGlobalInst :: LlvmInst -> SsaGlobalM [LlvmInst]
 toSsaGlobalInst inst@(Lab lab) = do
   (symTab, _) <- get
   put (symTab, lab)
-  return inst
-
+  return [inst]
+toSsaGlobalInst (AssInst t _ rLoc) = do
+  updateValGlobal (Reg rLoc t)
+  return []
 toSsaGlobalInst (RetInst val) = do
   upVal <- updateValGlobal val
-  return $ RetInst upVal
+  return [RetInst upVal]
 toSsaGlobalInst (Br val l1 l2) = do
   upVal <- updateValGlobal val
-  return $ Br upVal l1 l2
+  return [Br upVal l1 l2]
 toSsaGlobalInst (Call l t s vals) = do
   upVals <- mapM updateValGlobal vals
-  return $ Call l t s upVals
+  return [Call l t s upVals]
 toSsaGlobalInst (Mul l val1 val2) = do
   upVal1 <- updateValGlobal val1
   upVal2 <- updateValGlobal val2
-  return $ Mul l upVal1 upVal2
+  return [Mul l upVal1 upVal2]
 toSsaGlobalInst (SDiv l val1 val2) = do
   upVal1 <- updateValGlobal val1
   upVal2 <- updateValGlobal val2
-  return $ SDiv l upVal1 upVal2
+  return [SDiv l upVal1 upVal2]
 toSsaGlobalInst (SRem l val1 val2) = do
   upVal1 <- updateValGlobal val1
   upVal2 <- updateValGlobal val2
-  return $ SRem l upVal1 upVal2
+  return [SRem l upVal1 upVal2]
 toSsaGlobalInst (Add l val1 val2) = do
   upVal1 <- updateValGlobal val1
   upVal2 <- updateValGlobal val2
-  return $ Add l upVal1 upVal2
+  return [Add l upVal1 upVal2]
 toSsaGlobalInst (Sub l val1 val2) = do
   upVal1 <- updateValGlobal val1
   upVal2 <- updateValGlobal val2
-  return $ Sub l upVal1 upVal2
+  return [Sub l upVal1 upVal2]
 toSsaGlobalInst (Icmp l o valT valF) = do
   upValT <- updateValGlobal valT
   upValF <- updateValGlobal valF
-  return $ Icmp l o upValT upValF
+  return [Icmp l o upValT upValF]
 
-toSsaGlobalInst inst = return inst
+toSsaGlobalInst inst = return [inst]
 
 updateValGlobal :: Value -> SsaGlobalM Value
 updateValGlobal (Reg loc t)
@@ -207,10 +212,12 @@ updateValGlobal val = return val
 
 getGlobalLoc :: Label -> Loc -> LlvmType -> [Label] -> SsaGlobalM (Label, Loc)
 getGlobalLoc currLab loc t preds = do
-  (symTab, lab) <- get
   predsLocs <- mapM (\p -> _getGlobalLoc p loc t) preds
+  (symTab, lab) <- get
   case predsLocs of
-    [] -> error "internal error: empty preds or loc not found"
+    [] -> case preds of
+      [] -> error $ "internal error: empty preds for " ++ currLab ++ " " ++ loc ++ " " ++ show symTab
+      _ -> error $ "internal error: loc not found for preds " ++ show preds
     [(_, newLoc)] -> do
       put (M.insert (loc, currLab) newLoc symTab, lab)
       return (currLab, newLoc)
@@ -220,9 +227,17 @@ getGlobalLoc currLab loc t preds = do
       | locB == emptyLoc -> return (currLab, locA)
       | locA == locB -> return (currLab, locA)
       | otherwise -> do
+        -- todo: smarter newLoc
         let newLoc = locA ++ "_" ++ tail locB
-        put (M.insert (loc, currLab) newLoc symTab, lab)
-        tell [(currLab, Phi newLoc t locA labA locB labB)]
+        case M.lookup (loc, currLab) symTab of
+          Just existingLoc
+            | newLoc /= existingLoc -> do
+              put (M.insert (loc, currLab) newLoc symTab, lab)
+              tell [(currLab, Phi newLoc t locA labA locB labB)]
+            | otherwise -> put (symTab, lab)
+          Nothing -> do
+            put (M.insert (loc, currLab) newLoc symTab, lab)
+            tell [(currLab, Phi newLoc t locA labA locB labB)]
         return (currLab, newLoc)
     _ -> error "internal error: to many preds found"
 
