@@ -372,22 +372,18 @@ getValLoc val = do
     BoolLit b -> tell [Add newLoc val (BoolLit False)]
   return newLoc
 
--- Returns next location.
-_getLoc :: Char -> Int -> Loc
-_getLoc c n = '%' : c : show (n + 1)
-
 getLoc :: Int -> Loc
-getLoc n = _getLoc 'r' n
+getLoc = _getLoc 'r'
 
 -- Returns loc which will be removed after SSA phase.
 getTmpLoc :: Int -> Loc
-getTmpLoc n = _getLoc 't' n
+getTmpLoc = _getLoc 't'
 
 getArgLoc :: Int -> Loc
-getArgLoc n = _getLoc 'a' n
+getArgLoc = _getLoc 'a'
 
 getLabel :: Int -> Label
-getLabel n = _getLoc 'l' n
+getLabel = _getLoc 'l'
 
 toLlvmType :: TypePos -> LlvmType
 toLlvmType (Int _) = LlvmInt

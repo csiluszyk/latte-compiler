@@ -3,7 +3,8 @@ module LlvmLatte where
 import Data.List
 import qualified Data.Map as M
 
-type Loc = String
+import UtilsLatte
+
 data Value = Reg Loc LlvmType | IntLit Integer | BoolLit Bool
   deriving (Eq, Ord, Read)
 instance Show Value where
@@ -14,9 +15,6 @@ instance Show Value where
 
 emptyLab :: Label
 emptyLab = ""
-
-emptyLoc :: Loc
-emptyLoc = ""
 
 boolType = "i1"
 strType = "i8*"

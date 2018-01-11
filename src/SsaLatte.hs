@@ -8,6 +8,7 @@ import Data.List
 import qualified Data.Map as M
 
 import LlvmLatte
+import UtilsLatte
 
 
 type SymTab = M.Map (Loc, Label) Loc
@@ -15,7 +16,7 @@ type Cfg = M.Map Label [Label]
 
 type SsaLocalM a = State (SymTab, Label) a
 type SsaGlobalM a =
-  WriterT [(Label, LlvmInst)] (StateT (SymTab, Label) (Reader Cfg)) a
+  WriterT [(Label, LlvmInst)] (StateT (SymTab, Label, Int) (Reader Cfg)) a
 type LabM = M.Map Label Label
 
 
@@ -28,8 +29,8 @@ toSsa (LlvmProg s e defines) = LlvmProg s e newDefines
     runSsaDef (LlvmDef t l vs insts) = LlvmDef t l vs ssa
       where
         ssa = fillEmpty (insertPhis phis globalSsa) t
-        ((globalSsa, phis), (globalSymTab, _)) = runReader (runStateT
-          (runWriterT (toSsaGlobalInsts localSsa)) (localSymTab, "")) cfg
+        ((globalSsa, phis), (globalSymTab, _, _)) = runReader (runStateT
+          (runWriterT (toSsaGlobalInsts localSsa)) (localSymTab, "", 0)) cfg
         (localSsa, (localSymTab, _)) =
           runState (toSsaLocalInsts insts) (M.empty, "")
         cfg = generateCfg insts
@@ -85,13 +86,13 @@ generateCfg insts = snd $ foldl foldInst ("", M.empty) insts
 
 
 toSsaLocalInsts :: [LlvmInst] -> SsaLocalM [LlvmInst]
-toSsaLocalInsts = concatMapM toSsaLocalInst
+toSsaLocalInsts = mapM toSsaLocalInst
 
-toSsaLocalInst :: LlvmInst -> SsaLocalM [LlvmInst]
+toSsaLocalInst :: LlvmInst -> SsaLocalM LlvmInst
 toSsaLocalInst inst@(Lab lab) = do
   (symTab, _) <- get
   put (symTab, lab)
-  return [inst]
+  return inst
 toSsaLocalInst (AssInst t lLoc rLoc) = do
   (symTab, lab) <- get
   let newSymTab
@@ -101,41 +102,41 @@ toSsaLocalInst (AssInst t lLoc rLoc) = do
   upVal <- updateValLocal (Reg rLoc t)
   let upLoc = case upVal of
                 Reg upLoc _ -> upLoc  -- only this case is posssible
-  return [AssInst t lLoc upLoc]
+  return $ AssInst t lLoc upLoc
 toSsaLocalInst (RetInst val) = do
   upVal <- updateValLocal val
-  return [RetInst upVal]
+  return $ RetInst upVal
 toSsaLocalInst (Br val l1 l2) = do
   upVal <- updateValLocal val
-  return [Br upVal l1 l2]
+  return $ Br upVal l1 l2
 toSsaLocalInst (Call l t s vals) = do
   upVals <- mapM updateValLocal vals
-  return [Call l t s upVals]
+  return $ Call l t s upVals
 toSsaLocalInst (Mul l val1 val2) = do
   upVal1 <- updateValLocal val1
   upVal2 <- updateValLocal val2
-  return [Mul l upVal1 upVal2]
+  return $ Mul l upVal1 upVal2
 toSsaLocalInst (SDiv l val1 val2) = do
   upVal1 <- updateValLocal val1
   upVal2 <- updateValLocal val2
-  return [SDiv l upVal1 upVal2]
+  return $ SDiv l upVal1 upVal2
 toSsaLocalInst (SRem l val1 val2) = do
   upVal1 <- updateValLocal val1
   upVal2 <- updateValLocal val2
-  return [SRem l upVal1 upVal2]
+  return $ SRem l upVal1 upVal2
 toSsaLocalInst (Add l val1 val2) = do
   upVal1 <- updateValLocal val1
   upVal2 <- updateValLocal val2
-  return [Add l upVal1 upVal2]
+  return $ Add l upVal1 upVal2
 toSsaLocalInst (Sub l val1 val2) = do
   upVal1 <- updateValLocal val1
   upVal2 <- updateValLocal val2
-  return [Sub l upVal1 upVal2]
+  return $ Sub l upVal1 upVal2
 toSsaLocalInst (Icmp l o valT valF) = do
   upValT <- updateValLocal valT
   upValF <- updateValLocal valF
-  return [Icmp l o upValT upValF]
-toSsaLocalInst inst = return [inst]
+  return $ Icmp l o upValT upValF
+toSsaLocalInst inst = return inst
 
 updateValLocal :: Value -> SsaLocalM Value
 updateValLocal (Reg loc t)
@@ -157,8 +158,8 @@ toSsaGlobalInsts = concatMapM toSsaGlobalInst
 
 toSsaGlobalInst :: LlvmInst -> SsaGlobalM [LlvmInst]
 toSsaGlobalInst inst@(Lab lab) = do
-  (symTab, _) <- get
-  put (symTab, lab)
+  (symTab, _, n) <- get
+  put (symTab, lab, n)
   return [inst]
 toSsaGlobalInst (AssInst t _ rLoc) = do
   updateValGlobal (Reg rLoc t)
@@ -203,7 +204,7 @@ updateValGlobal :: Value -> SsaGlobalM Value
 updateValGlobal (Reg loc t)
   | head (tail loc) == 't' = do  -- tmp arg to replace
       cfg <- ask
-      (symTab, lab) <- get
+      (symTab, lab, n) <- get
       let preds = M.findWithDefault [] lab cfg
       (_, newLoc) <- getGlobalLoc lab loc t preds
       return $ Reg newLoc t
@@ -213,13 +214,13 @@ updateValGlobal val = return val
 getGlobalLoc :: Label -> Loc -> LlvmType -> [Label] -> SsaGlobalM (Label, Loc)
 getGlobalLoc currLab loc t preds = do
   predsLocs <- mapM (\p -> _getGlobalLoc p loc t) preds
-  (symTab, lab) <- get
+  (symTab, lab, n) <- get
   case predsLocs of
     [] -> case preds of
-      [] -> error $ "internal error: empty preds for " ++ currLab ++ " " ++ loc ++ " " ++ show symTab
+      [] -> error $ "internal error: empty preds for " ++ currLab ++ " " ++ loc
       _ -> error $ "internal error: loc not found for preds " ++ show preds
     [(_, newLoc)] -> do
-      put (M.insert (loc, currLab) newLoc symTab, lab)
+      put (M.insert (loc, currLab) newLoc symTab, lab, n)
       return (currLab, newLoc)
     [(labA, locA), (labB, locB)]
       | all (== emptyLoc) [locA, locB] -> error "internal error: all empty"
@@ -227,27 +228,19 @@ getGlobalLoc currLab loc t preds = do
       | locB == emptyLoc -> return (currLab, locA)
       | locA == locB -> return (currLab, locA)
       | otherwise -> do
-        -- todo: smarter newLoc
-        let newLoc = locA ++ "_" ++ tail locB
-        case M.lookup (loc, currLab) symTab of
-          Just existingLoc
-            | newLoc /= existingLoc -> do
-              put (M.insert (loc, currLab) newLoc symTab, lab)
-              tell [(currLab, Phi newLoc t locA labA locB labB)]
-            | otherwise -> put (symTab, lab)
-          Nothing -> do
-            put (M.insert (loc, currLab) newLoc symTab, lab)
-            tell [(currLab, Phi newLoc t locA labA locB labB)]
+        let newLoc = getPhiLoc n
+        put (M.insert (loc, currLab) newLoc symTab, lab, n + 1)
+        tell [(currLab, Phi newLoc t locA labA locB labB)]
         return (currLab, newLoc)
     _ -> error "internal error: to many preds found"
 
 _getGlobalLoc :: Label -> Loc -> LlvmType -> SsaGlobalM (Label, Loc)
 _getGlobalLoc currLab loc t = do
-  (symTab, lab) <- get
+  (symTab, lab, n) <- get
   case M.lookup (loc, currLab) symTab of
     Just newLoc -> return (currLab, getFinalLoc newLoc currLab symTab)
     Nothing -> do
-      put (M.insert (loc, currLab) emptyLoc symTab, lab)
+      put (M.insert (loc, currLab) emptyLoc symTab, lab, n)
       cfg <- ask
       let preds = M.findWithDefault [] currLab cfg
       getGlobalLoc currLab loc t preds
@@ -259,3 +252,6 @@ getFinalLoc loc lab symTab =
       | newLoc == loc -> loc
       | otherwise -> getFinalLoc newLoc lab symTab
     Nothing -> loc
+
+getPhiLoc :: Int -> Loc
+getPhiLoc = _getLoc 'p'
