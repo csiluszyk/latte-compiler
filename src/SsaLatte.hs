@@ -9,12 +9,15 @@ import qualified Data.Map as M
 
 import LlvmLatte
 
+
 type SymTab = M.Map (Loc, Label) Loc
 type Cfg = M.Map Label [Label]
 
 type SsaLocalM a = State (SymTab, Label) a
 type SsaGlobalM a =
   WriterT [(Label, LlvmInst)] (StateT (SymTab, Label) (Reader Cfg)) a
+type LabM = M.Map Label Label
+
 
 -- Converts LlvmProg to SSA form
 -- [Braun, Buchwald, Hack, Leißa, Mallon, Zwinkau 2013]
@@ -24,12 +27,13 @@ toSsa (LlvmProg s e defines) = LlvmProg s e newDefines
     newDefines = map runSsaDef defines
     runSsaDef (LlvmDef t l vs insts) = LlvmDef t l vs ssa
       where
-        ssa = insertPhis (sort phis) globalSsa
-        (globalSsa, phis) = fst $ runReader (runStateT (runWriterT (
-          toSsaGlobalInsts localSsa)) (symTab, "")) cfg
-        (localSsa, (symTab, _)) =
+        ssa = removeEmpty (insertPhis (sort phis) globalSsa) globalSymTab cfg
+        ((globalSsa, phis), (globalSymTab, _)) = runReader (runStateT
+          (runWriterT (toSsaGlobalInsts localSsa)) (localSymTab, "")) cfg
+        (localSsa, (localSymTab, _)) =
           runState (toSsaLocalInsts insts) (M.empty, "")
         cfg = generateCfg insts
+
 
 insertPhis :: [(Label, LlvmInst)] -> [LlvmInst] -> [LlvmInst]
 insertPhis [] insts = insts
@@ -38,6 +42,81 @@ insertPhis phis@((phiLab, phi) : rest) (l@(Lab lab) : insts)
   | otherwise = l : insertPhis phis insts
 insertPhis phis (i : insts) = i : insertPhis phis insts
 insertPhis p i = error $ show p ++ " " ++ show i --todo
+
+
+removeEmpty :: [LlvmInst] -> SymTab -> Cfg -> [LlvmInst]
+-- todo: add only if first has predecessors
+removeEmpty insts symTab cfg = Lab "%entry" : Goto firstLab : nonEmpty
+  where
+    blocks = splitBlocks insts
+    (nonEmptyBlocks, labM) = removeEmptyBlocks blocks
+    nonEmpty = removeEmptyInsts (concat nonEmptyBlocks) labM symTab cfg ""
+    firstLab = getLab $ head nonEmpty
+
+getLab :: LlvmInst -> Label
+getLab (Lab lab) = lab
+
+removeEmptyBlocks :: [[LlvmInst]] -> ([[LlvmInst]], LabM)
+removeEmptyBlocks [] = ([], M.empty)
+removeEmptyBlocks ([Lab lEmp] : blocks) =
+  (newBlocks, M.insert lEmp emptyLab labM)
+  where (newBlocks, labM) = removeEmptyBlocks blocks
+removeEmptyBlocks ([Lab lSrc, Goto lDst] : blocks) =
+  (newBlocks, M.insert lSrc lDst labM)
+  where (newBlocks, labM) = removeEmptyBlocks blocks
+removeEmptyBlocks (b : blocks) = (b : newBlocks, labM)
+  where (newBlocks, labM) = removeEmptyBlocks blocks
+
+removeEmptyInsts :: [LlvmInst] -> LabM -> SymTab -> Cfg -> Label -> [LlvmInst]
+removeEmptyInsts [] _ _ _ _ = []
+removeEmptyInsts (Goto lab : insts) labM symTab cfg l
+  | newLab == emptyLab = removeEmptyInsts insts labM symTab cfg l
+  | otherwise = Goto newLab : removeEmptyInsts insts labM symTab cfg l
+  where newLab = _getFinalLab lab labM
+removeEmptyInsts (Br v lab1 lab2 : insts) labM symTab cfg l
+  | all (== emptyLab) [nLab1, nLab2] = removeEmptyInsts insts labM symTab cfg l
+  | nLab1 == emptyLab = Goto nLab2 : removeEmptyInsts insts labM symTab cfg l
+  | nLab2 == emptyLab = Goto nLab1 : removeEmptyInsts insts labM symTab cfg l
+  | otherwise = Br v nLab1 nLab2 : removeEmptyInsts insts labM symTab cfg l
+  where nLab1 = _getFinalLab lab1 labM
+        nLab2 = _getFinalLab lab2 labM
+removeEmptyInsts (Phi loc t loc1 _ loc2 _ : insts) labM symTab cfg l =
+  -- todo: find predecessor in which loc is in scope
+  Phi loc t loc1 lab1 loc2 lab2 : removeEmptyInsts insts labM symTab cfg l
+  where
+    preds = M.findWithDefault [] l cfg
+    pred1 = head preds
+    pred2 = last preds
+    (lab1, lab2) =
+      case (M.lookup (loc1, pred1) symTab, M.lookup (loc1, pred2) symTab,
+            M.lookup (loc2, pred1) symTab, M.lookup (loc2, pred2) symTab) of
+        (Just _, Nothing, Nothing, Just _) -> (pred1, pred2)
+        (Nothing, Just _, Just _, Nothing) -> (pred2, pred1)
+        (Just _, Nothing, Just _, Just _) -> (pred1, pred2)
+        (Just _, Just _, Just _, Nothing) -> (pred2, pred1)
+        (_, _, _, _) -> error "internal error: couldn't find new phi labels"
+removeEmptyInsts (Lab lab: insts) labM symTab cfg _ =
+  Lab lab : removeEmptyInsts insts labM symTab cfg lab
+removeEmptyInsts (inst : insts) labM symTab cfg l =
+  inst : removeEmptyInsts insts labM symTab cfg l
+
+_getFinalLab :: Label -> LabM -> Label
+_getFinalLab lab labM
+  | nextLab == lab = lab
+  | otherwise = _getFinalLab nextLab labM
+  where nextLab = M.findWithDefault lab lab labM
+
+splitBlocks :: [LlvmInst] -> [[LlvmInst]]
+splitBlocks insts = _splitBlocks insts [] []
+
+_splitBlocks :: [LlvmInst] -> [LlvmInst] -> [[LlvmInst]] -> [[LlvmInst]]
+_splitBlocks [] currBlock acc = reverse (reverse currBlock : acc)
+_splitBlocks (Lab l : insts) currBlock acc
+  | null currBlock = _splitBlocks insts [Lab l] acc
+  | otherwise = _splitBlocks insts [Lab l] (reverse currBlock : acc)
+_splitBlocks (inst : insts) currBlock acc =
+  _splitBlocks insts (inst : currBlock) acc
+
 
 generateCfg :: [LlvmInst] -> Cfg
 generateCfg insts = snd $ foldl foldInst ("", M.empty) insts
@@ -50,6 +129,7 @@ generateCfg insts = snd $ foldl foldInst ("", M.empty) insts
     foldInst (currLab, cfg) _ = (currLab, cfg)
     updateCfg cfg toLab fromLab = M.insert toLab bList cfg
       where bList = nub $ fromLab : M.findWithDefault [] toLab cfg
+
 
 toSsaLocalInsts :: [LlvmInst] -> SsaLocalM [LlvmInst]
 toSsaLocalInsts = concatMapM toSsaLocalInst
