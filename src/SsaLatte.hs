@@ -27,7 +27,7 @@ toSsa (LlvmProg s e defines) = LlvmProg s e newDefines
     newDefines = map runSsaDef defines
     runSsaDef (LlvmDef t l vs insts) = LlvmDef t l vs ssa
       where
-        ssa = fillEmpty (insertPhis (sort phis) globalSsa) t
+        ssa = fillEmpty (insertPhis phis globalSsa) t
         ((globalSsa, phis), (globalSymTab, _)) = runReader (runStateT
           (runWriterT (toSsaGlobalInsts localSsa)) (localSymTab, "")) cfg
         (localSsa, (localSymTab, _)) =
@@ -36,12 +36,13 @@ toSsa (LlvmProg s e defines) = LlvmProg s e newDefines
 
 
 insertPhis :: [(Label, LlvmInst)] -> [LlvmInst] -> [LlvmInst]
-insertPhis [] insts = insts
-insertPhis phis@((phiLab, phi) : rest) (l@(Lab lab) : insts)
-  | phiLab == lab = insertPhis rest (l : phi : insts)
-  | otherwise = l : insertPhis phis insts
-insertPhis phis (i : insts) = i : insertPhis phis insts
-insertPhis p i = error $ show p ++ " " ++ show i --todo
+insertPhis phis = _insertPhis phisM
+  where phisM = M.fromListWith (++) $ map (\(l, p) -> (l, [p])) phis
+_insertPhis phisM [] = []
+_insertPhis phisM (l@(Lab lab) : insts) =
+  l : phis ++ _insertPhis phisM insts
+  where phis = M.findWithDefault [] lab phisM
+_insertPhis phisM (i : insts) = i : _insertPhis phisM insts
 
 
 fillEmpty :: [LlvmInst] -> LlvmType -> [LlvmInst]
