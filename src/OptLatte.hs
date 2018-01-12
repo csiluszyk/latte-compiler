@@ -1,6 +1,7 @@
 module OptLatte where
 
 import Control.Monad.State
+import Data.Int
 import Data.List
 import qualified Data.Map as M
 import Data.Maybe
@@ -122,9 +123,9 @@ propagateConstsInst (Icmp loc op val1 val2) = do
   (consts, strLits) <- get
   let updatedConsts = case (newVal1, newVal2) of
         (IntLit i1, IntLit i2) ->
-          M.insert loc (BoolLit (getCmpIntFun op i1 i2)) consts
+          M.insert loc (BoolLit (cmpInt op i1 i2)) consts
         (BoolLit b1, BoolLit b2) ->
-          M.insert loc (BoolLit (getCmpBoolFun op b1 b2)) consts
+          M.insert loc (BoolLit (cmpBool op b1 b2)) consts
         _ -> consts
   put (updatedConsts, strLits)
   return $ Icmp loc op newVal1 newVal2
@@ -137,17 +138,17 @@ propagateConstsInst inst = return inst
 xor :: Bool -> Bool -> Bool
 xor a b = not (a && b) && (a || b)
 
-getCmpIntFun :: LlvmRelOp -> Int -> Int -> Bool
-getCmpIntFun Lth = (<)
-getCmpIntFun Le = (<=)
-getCmpIntFun Gth = (>)
-getCmpIntFun Ge = (>=)
-getCmpIntFun Equ = (==)
-getCmpIntFun Ne = (/=)
+cmpInt :: LlvmRelOp -> Int32 -> Int32 -> Bool
+cmpInt Lth = (<)
+cmpInt Le = (<=)
+cmpInt Gth = (>)
+cmpInt Ge = (>=)
+cmpInt Equ = (==)
+cmpInt Ne = (/=)
 
-getCmpBoolFun :: LlvmRelOp -> Bool -> Bool -> Bool
-getCmpBoolFun Equ = (==)
-getCmpBoolFun Ne = (/=)
+cmpBool :: LlvmRelOp -> Bool -> Bool -> Bool
+cmpBool Equ = (==)
+cmpBool Ne = (/=)
 
 computeVal :: Value -> OptM Value
 computeVal r@(Reg loc t) = do

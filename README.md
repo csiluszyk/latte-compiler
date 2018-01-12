@@ -9,9 +9,10 @@
 
 ### todo:
 * dead code elimination
-    * if call function can have side effects then leave
-    * check used labels (also in phis) -> delete unused
+    * icmp 1, icmp 0
     * ret : insts
+    * if function call can have side effects then leave
+    * check used labels (also in phis) -> delete unused
 * blocks only with jumps
     * [phi, goto] - can delete
 * same exprs locally (without function calls with side effects) (including getelementptr)

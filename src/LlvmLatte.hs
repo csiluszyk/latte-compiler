@@ -1,11 +1,12 @@
 module LlvmLatte where
 
+import Data.Int
 import Data.List
 import qualified Data.Map as M
 
 import UtilsLatte
 
-data Value = Reg Loc LlvmType | IntLit Int | BoolLit Bool
+data Value = Reg Loc LlvmType | IntLit Int32 | BoolLit Bool
   deriving (Eq, Ord, Read)
 instance Show Value where
   show (Reg loc t) = unwords [show t, loc]
