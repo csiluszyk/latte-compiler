@@ -23,6 +23,7 @@ voidType = "void"
 
 type Label = String
 
+-- String consts are filled during optimization phase.
 data LlvmProg = LlvmProg [StrConst] [Extern] [LlvmDef]
   deriving (Eq, Ord, Read)
 instance Show LlvmProg where
@@ -91,6 +92,7 @@ instance Show LlvmInst where
         [sep, "call", voidType, showFun name vals]
       (Call loc rType name vals) ->
         [sep, loc, "= call", show rType, showFun name vals]
+      -- `sLoc` is filled during optimization phase.
       (StrLit loc s sLoc) -> [sep, loc, "=", showGetelementptrStr s sLoc]
       (Mul loc v1 v2) -> showBin "mul" loc v1 v2
       (SDiv loc v1 v2) -> showBin "sdiv" loc v1 v2

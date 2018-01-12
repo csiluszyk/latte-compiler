@@ -12,7 +12,6 @@ import UtilsLatte
 import LlvmLatte
 
 type SymTab = M.Map Ident (Loc, LlvmType)
-type StrMap = M.Map String Loc
 
 builtins :: [(Ident, (Loc, LlvmType))]
 builtins = [(Ident "printInt", (emptyLoc, LlvmVoid)),
@@ -22,22 +21,18 @@ builtins = [(Ident "printInt", (emptyLoc, LlvmVoid)),
             (Ident "readString", (emptyLoc, LlvmStr))]
 
 type GenLlvmM a =
-  WriterT [LlvmInst] (StateT (Int, Int) (Reader (SymTab, StrMap))) a
+  WriterT [LlvmInst] (StateT (Int, Int) (Reader SymTab)) a
 
-runGenLlvmM :: [Stmt Pos] -> Int -> Int -> SymTab -> StrMap -> [LlvmInst]
-runGenLlvmM ss i l s m = snd $ fst r where
-  r = runReader (runStateT (runWriterT (generateLlvmStmts ss)) (i, l)) (s, m)
+runGenLlvmM :: [Stmt Pos] -> Int -> Int -> SymTab -> [LlvmInst]
+runGenLlvmM ss i l m = snd $ fst r where
+  r = runReader (runStateT (runWriterT (generateLlvmStmts ss)) (i, l)) m
 
 generateLlvm :: Program Pos -> LlvmProg
-generateLlvm (Program _ topDefs) = LlvmProg strConsts externs defines
+generateLlvm (Program _ topDefs) = LlvmProg [] externs defines
   where
     foldPutTopDefs globals (FnDef _ fRet fName _ _) =
       M.insert fName (emptyLoc, toLlvmType fRet) globals
     globals = foldl foldPutTopDefs (M.fromList builtins) topDefs
-    strLit = nub $ "\"\"" : concatMap getStrLiteralsTopDef topDefs
-    strLitLoc = map (\(s, i) -> (s, "@.str." ++ show i)) $ zip strLit [0 ..]
-    strConsts = map (\(s, l) -> StrConst l s) strLitLoc
-    strLitMap = M.fromList strLitLoc
     runGenIrTopDef (FnDef _ fType (Ident name) args (Block _ stmts)) =
       LlvmDef dType name dArgs insts
       where
@@ -49,7 +44,7 @@ generateLlvm (Program _ topDefs) = LlvmProg strConsts externs defines
           (M.insert ident (getArgLoc i, toLlvmType aType) symTab, i + 1)
         insts = Lab (getLabel (-1)) : body ++ vRet
           where
-            body = runGenLlvmM stmts n 0 locals strLitMap
+            body = runGenLlvmM stmts n 0 locals
             -- Ensure that void function returns.
             vRet = case fType of
               (Void _)
@@ -58,48 +53,6 @@ generateLlvm (Program _ topDefs) = LlvmProg strConsts externs defines
                 | otherwise -> [VRetInst]
               _ -> []
     defines = map runGenIrTopDef topDefs
-
-getStrLiteralsTopDef :: TopDef Pos -> [String]
-getStrLiteralsTopDef (FnDef _ _ _ _ (Block _ stmts)) =
-  getStrLiteralsStmts stmts
-
-getStrLiteralsStmts :: [Stmt Pos] -> [String]
-getStrLiteralsStmts = concatMap getStrLiteralsStmt
-
-getStrLiteralsStmt :: Stmt Pos -> [String]
-getStrLiteralsStmt (BStmt _ (Block _ stmts)) = getStrLiteralsStmts stmts
-getStrLiteralsStmt (Decl _ _ items) = concatMap getStrLiteralsItem items
-getStrLiteralsStmt (Ass _ _ e) = getStrLiteralsExp e
-getStrLiteralsStmt (Ret _ e) = getStrLiteralsExp e
-getStrLiteralsStmt (Cond _ e stmt) =
-  getStrLiteralsExp e ++ getStrLiteralsStmt stmt
-getStrLiteralsStmt (CondElse _ e stmtT stmtF) =
-  getStrLiteralsExp e ++ getStrLiteralsStmt stmtT ++ getStrLiteralsStmt stmtF
-getStrLiteralsStmt (While _ e stmt) =
-  getStrLiteralsExp e ++ getStrLiteralsStmt stmt
-getStrLiteralsStmt (SExp _ e) = getStrLiteralsExp e
-getStrLiteralsStmt _ = []
-
-getStrLiteralsItem :: Item Pos -> [String]
-getStrLiteralsItem (Init _ _ e) = getStrLiteralsExp e
-getStrLiteralsItem _ = []
-
-getStrLiteralsExp :: Expr Pos -> [String]
-getStrLiteralsExp (EApp _ _ es) = concatMap getStrLiteralsExp es
-getStrLiteralsExp (EString _ s) = [s]
-getStrLiteralsExp (Neg _ e) = getStrLiteralsExp e
-getStrLiteralsExp (Not _ e) = getStrLiteralsExp e
-getStrLiteralsExp (EMul _ e1 _ e2) =
-  getStrLiteralsExp e1 ++ getStrLiteralsExp e2
-getStrLiteralsExp (EAdd _ e1 _ e2) =
-  getStrLiteralsExp e1 ++ getStrLiteralsExp e2
-getStrLiteralsExp (ERel _ e1 _ e2) =
-  getStrLiteralsExp e1 ++ getStrLiteralsExp e2
-getStrLiteralsExp (EAnd _ e1 e2) =
-  getStrLiteralsExp e1 ++ getStrLiteralsExp e2
-getStrLiteralsExp (EOr _ e1 e2) =
-  getStrLiteralsExp e1 ++ getStrLiteralsExp e2
-getStrLiteralsExp _ = []
 
 generateLlvmStmts :: [Stmt Pos] -> GenLlvmM ()
 generateLlvmStmts [] = return ()
@@ -126,12 +79,12 @@ generateLlvmStmts (Decl pos dType (item : items) : stmts) = do
   let decls = map (\nItem -> Decl pos dType [nItem]) items
       tmpLoc = getTmpLoc n
   tell [AssInst (toLlvmType dType) tmpLoc valLoc]
-  let newEnv (s, m) = (M.insert ident (tmpLoc, toLlvmType dType) s, m)
-  local newEnv $ generateLlvmStmts (decls ++ stmts)
+  let updatedSymTab = M.insert ident (tmpLoc, toLlvmType dType)
+  local updatedSymTab $ generateLlvmStmts (decls ++ stmts)
   return ()
 
 generateLlvmStmts (Ass _ ident e : stmts) = do
-  (symTab, _) <- ask
+  symTab <- ask
   let (loc, irType) = fromJust $ M.lookup ident symTab
   val <- generateLlvmExp e
   valLoc <- getValLoc val
@@ -139,7 +92,7 @@ generateLlvmStmts (Ass _ ident e : stmts) = do
   generateLlvmStmts stmts
 
 generateLlvmStmts (Incr _ ident : stmts) = do
-  (symTab, _) <- ask
+  symTab <- ask
   (n, l) <- get
   put (n + 1, l)
   let newLoc = getLoc n
@@ -149,7 +102,7 @@ generateLlvmStmts (Incr _ ident : stmts) = do
   generateLlvmStmts stmts
 
 generateLlvmStmts (Decr _ ident : stmts) = do
-  (symTab, _) <- ask
+  symTab <- ask
   (n, l) <- get
   put (n + 1, l)
   let newLoc = getLoc n
@@ -219,7 +172,7 @@ generateLlvmStmts (SExp _ e : stmts) = do
 generateLlvmExp :: Expr Pos -> GenLlvmM Value
 
 generateLlvmExp (EVar _ ident) = do
-  (symTab, _) <- ask
+  symTab <- ask
   let (loc, irType) = fromJust $ M.lookup ident symTab
   return $ Reg loc irType
 
@@ -228,7 +181,7 @@ generateLlvmExp (ELitTrue _) = return $ BoolLit True
 generateLlvmExp (ELitFalse _) = return $ BoolLit False
 
 generateLlvmExp (EApp _ ident@(Ident name) es) = do
-  (symTab, _) <- ask
+  symTab <- ask
   (n, l) <- get
   put (n + 1, l)
   let (_, rType) = fromJust $ M.lookup ident symTab
@@ -238,13 +191,10 @@ generateLlvmExp (EApp _ ident@(Ident name) es) = do
   return $ Reg newLoc rType
 
 generateLlvmExp (EString _ s) = do
-  (_, strLitMap) <- ask
   (n, l) <- get
   put (n + 1, l)
-  let bareS = s
-      sLoc = fromJust $ M.lookup bareS strLitMap
-      newLoc = getLoc n
-  tell [StrLit newLoc bareS sLoc]
+  let newLoc = getLoc n
+  tell [StrLit newLoc s emptyLoc]
   return $ Reg newLoc LlvmStr
 
 generateLlvmExp (Neg _ e) = do
