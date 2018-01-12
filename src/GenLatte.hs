@@ -223,7 +223,7 @@ generateLlvmExp (EVar _ ident) = do
   let (loc, irType) = fromJust $ M.lookup ident symTab
   return $ Reg loc irType
 
-generateLlvmExp (ELitInt _ i) = return $ IntLit i
+generateLlvmExp (ELitInt _ i) = return $ IntLit (fromInteger i)  -- safe cast
 generateLlvmExp (ELitTrue _) = return $ BoolLit True
 generateLlvmExp (ELitFalse _) = return $ BoolLit False
 

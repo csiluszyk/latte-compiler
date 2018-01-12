@@ -5,7 +5,7 @@ import qualified Data.Map as M
 
 import UtilsLatte
 
-data Value = Reg Loc LlvmType | IntLit Integer | BoolLit Bool
+data Value = Reg Loc LlvmType | IntLit Int | BoolLit Bool
   deriving (Eq, Ord, Read)
 instance Show Value where
   show (Reg loc t) = unwords [show t, loc]

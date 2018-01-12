@@ -3,7 +3,8 @@
 ## Optimization
 
 ### done:
-* copy propagation (during SSA phase)
+* copy propagation (during SSA phase),
+* constant folding and constant propagation (`propagateConstsInsts`),
 
 ### todo:
 * dead code elimination
@@ -11,6 +12,6 @@
     * check used labels (also in phis) -> delete unused
 * blocks only with jumps
     * [phi, goto] - can delete
-* same exprs (without function calls with side effects)
-* const propagation && computing value of expr
+* same exprs locally (without function calls with side effects)
+* same exprs globally (without function calls with side effects)
 * also for string (_concat)
