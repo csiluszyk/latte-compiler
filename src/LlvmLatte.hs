@@ -75,7 +75,7 @@ data LlvmInst
   | Add Loc Value Value
   | Sub Loc Value Value
   | Icmp Loc LlvmRelOp Value Value
-  | Phi Loc LlvmType Loc Label Loc Label
+  | Phi Loc LlvmType [(Value, Label)]
   deriving (Eq, Ord, Read)
 instance Show LlvmInst where
   show inst = unwords parts where
@@ -99,11 +99,11 @@ instance Show LlvmInst where
       (Sub loc v1 v2) -> showBin "sub" loc v1 v2
       (Icmp loc op v1 v2) ->
         [sep, loc, "= icmp", show op, show v1 ++ ",", showVal v2]
-      (Phi loc t l1 lab1 l2 lab2) -> [sep, loc, "= phi", show t, phiLocLab]
-        where phiLocLab = unwordsSep [showLocLab l1 lab1, showLocLab l2 lab2]
+      (Phi loc t valLabs) -> [sep, loc, "= phi", show t, phiValLab]
+        where phiValLab = unwordsSep (map showValLab valLabs)
     showBin name loc v1 v2 = [sep, loc, "=", name, show v1 ++ ",", showVal v2]
     showLabel l = "label " ++ l
-    showLocLab loc lab = "[" ++ loc ++ ", " ++ lab ++ "]"
+    showValLab (val, lab) = "[" ++ showVal val ++ ", " ++ lab ++ "]"
     showGetelementptrStr s sLoc =
       "getelementptr " ++ unwordsSep [sSize, sSize ++ "* " ++ sLoc, zero, zero]
       where sSize = "[" ++ show size ++ " x " ++ "i8" ++ "]"

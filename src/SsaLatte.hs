@@ -230,7 +230,7 @@ getGlobalLoc currLab loc t preds = do
       | otherwise -> do
         let newLoc = getPhiLoc n
         put (M.insert (loc, currLab) newLoc symTab, lab, n + 1)
-        tell [(currLab, Phi newLoc t locA labA locB labB)]
+        tell [(currLab, Phi newLoc t [(Reg locA t, labA), (Reg locB t, labB)])]
         return (currLab, newLoc)
     _ -> error "internal error: to many preds found"
 

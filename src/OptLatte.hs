@@ -13,4 +13,3 @@ optimize (LlvmProg s e defines) = LlvmProg s e optimizedDefs
 
 optimizeInsts :: [LlvmInst] -> [LlvmInst]
 optimizeInsts x = x
-
