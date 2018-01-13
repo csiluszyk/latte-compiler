@@ -1,19 +1,19 @@
 @dnl = internal constant [4 x i8] c"%d\0A\00"
 @d   = internal constant [3 x i8] c"%d\00"
-@s   = internal constant [2 x i8] c" \00"
 @.str = internal constant [15 x i8] c"runtime error\0A\00"
 
 declare void @exit(i32)
 declare i32 @printf(i8*, ...)
-declare i32 @scanf(i8*, ...)
 declare i32 @puts(i8*)
-declare noalias i8* @malloc(i32) nounwind
-declare i32 @strlen(i8* nocapture) nounwind readonly
-declare i8* @strcat(i8*, i8* nocapture) nounwind
-declare i8* @strcpy(i8*, i8* nocapture) nounwind
 declare i32 @getchar()
+declare noalias i8* @malloc(i32)
+declare void @free(i8*)
 declare i8* @realloc(i8*, i64)
+declare i32 @strlen(i8*)
+declare i8* @strcat(i8*, i8*)
+declare i8* @strcpy(i8*, i8*)
 declare i32 @strcmp(i8*, i8*)
+declare i32 @atoi(i8*)
 
 define void @error() {
 entry:
@@ -37,14 +37,10 @@ entry:
 }
 
 define i32 @readInt() {
-entry:
-    %res = alloca i32
-    %t1 = getelementptr [3 x i8], [3 x i8]* @d, i32 0, i32 0
-    call i32 (i8*, ...) @scanf(i8* %t1, i32* %res)
-    %t2 = getelementptr [2 x i8], [2 x i8]* @s, i32 0, i32 0
-    call i32 (i8*, ...) @scanf(i8* %t1)  ; ignore dangling whitespaces
-    %t3 = load i32, i32* %res
-    ret i32 %t3
+    %t1 = call i8* @readString()
+    %t2 = call i32 @atoi(i8* %t1)
+    call void @free(i8* %t1)
+    ret i32 %t2
 }
 
 define i8* @_concat(i8* %s1, i8* %s2) {
