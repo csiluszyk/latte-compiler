@@ -1,7 +1,7 @@
 - Wszystkie parametry są przekazywane przez wartość. - to test
 - Przekazanie napisu jako parametru odbywa sie poprzez przekazanie przez wartość referencji do napisu.
 
-- change stack path in Makefile
+- change stack path in Makefile && j4
 - test Benke script
 
 OPTYMALIZACJE

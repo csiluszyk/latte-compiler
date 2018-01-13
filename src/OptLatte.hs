@@ -23,7 +23,6 @@ optimize (LlvmProg _ e defines) = LlvmProg strConsts e filledStrDefs
       (LlvmDef t l vs optimizedInsts, strLits)
       where
         (optimizedInsts, strLits) = optimizeInsts insts
-    -- todo generate at the end
     strLits = nub $ "\"\"" : concat strLitsL
     strLitLocs = map (\(s, i) -> (s, "@.str." ++ show i)) $ zip strLits [0 ..]
     strConsts = map (\(s, l) -> StrConst l s) strLitLocs
@@ -41,11 +40,13 @@ fillInsts (i : insts) strMap = i : fillInsts insts strMap
 optimizeInsts :: [LlvmInst] -> ([LlvmInst], [String])
 optimizeInsts insts = (propagatedConsts, M.elems strLits)
   where
+    -- todo generate strLits at the end
     (propagatedConsts, (_, strLits)) =
       runState (propagateConstsInsts insts) (M.empty, M.empty)
 
 
---eliminateDeadCode :: [LlvmInst] ->
+--eliminateDeadCode :: [LlvmInst] -> [LlvmInst]
+--eliminateDeadCode insts
 
 -- todo: M.Map Label ([Label], [Label])
 -- todo: M.Map Label [LlvmInst]

@@ -4,16 +4,12 @@ import Data.Int
 import Data.List
 import qualified Data.Map as M
 
-import UtilsLatte
 
-data Value = Reg Loc LlvmType | IntLit Int32 | BoolLit Bool
-  deriving (Eq, Ord, Read)
-instance Show Value where
-  show (Reg loc t) = unwords [show t, loc]
-  show (IntLit i) = unwords [intType, show i]
-  show (BoolLit True) = unwords [boolType, "1"]
-  show (BoolLit False) = unwords [boolType, "0"]
+type Loc = String
+emptyLoc :: Loc
+emptyLoc = ""
 
+type Label = String
 emptyLab :: Label
 emptyLab = ""
 
@@ -22,7 +18,13 @@ strType = "i8*"
 intType = "i32"
 voidType = "void"
 
-type Label = String
+data Value = Reg Loc LlvmType | IntLit Int32 | BoolLit Bool
+  deriving (Eq, Ord, Read)
+instance Show Value where
+  show (Reg loc t) = unwords [show t, loc]
+  show (IntLit i) = unwords [intType, show i]
+  show (BoolLit True) = unwords [boolType, "1"]
+  show (BoolLit False) = unwords [boolType, "0"]
 
 -- String consts are filled during optimization phase.
 data LlvmProg = LlvmProg [StrConst] [Extern] [LlvmDef]

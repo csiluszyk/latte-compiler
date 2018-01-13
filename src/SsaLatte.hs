@@ -60,18 +60,6 @@ fillEmptyBlocks ([Lab l] : blocks) t = case t of
 fillEmptyBlocks (block : blocks) t = block : fillEmptyBlocks blocks t
 
 
-splitBlocks :: [LlvmInst] -> [[LlvmInst]]
-splitBlocks insts = _splitBlocks insts [] []
-
-_splitBlocks :: [LlvmInst] -> [LlvmInst] -> [[LlvmInst]] -> [[LlvmInst]]
-_splitBlocks [] currBlock acc = reverse (reverse currBlock : acc)
-_splitBlocks (Lab l : insts) currBlock acc
-  | null currBlock = _splitBlocks insts [Lab l] acc
-  | otherwise = _splitBlocks insts [Lab l] (reverse currBlock : acc)
-_splitBlocks (inst : insts) currBlock acc =
-  _splitBlocks insts (inst : currBlock) acc
-
-
 generateCfg :: [LlvmInst] -> Cfg
 generateCfg insts = snd $ foldl foldInst ("", M.empty) insts
   where

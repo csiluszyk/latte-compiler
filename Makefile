@@ -13,6 +13,6 @@ testclean:
 	find test/tests -regex '.*.\(ll\|bc\)' -type f -delete
 
 test: testclean all
-	$(STACK) test --ta "--quiet -j4"
+	$(STACK) test --test-arguments "--quiet -j4"
 
 .PHONY: test testclean clean
