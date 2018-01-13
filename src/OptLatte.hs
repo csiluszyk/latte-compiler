@@ -23,6 +23,7 @@ optimize (LlvmProg _ e defines) = LlvmProg strConsts e filledStrDefs
       (LlvmDef t l vs optimizedInsts, strLits)
       where
         (optimizedInsts, strLits) = optimizeInsts insts
+    -- todo generate at the end
     strLits = nub $ "\"\"" : concat strLitsL
     strLitLocs = map (\(s, i) -> (s, "@.str." ++ show i)) $ zip strLits [0 ..]
     strConsts = map (\(s, l) -> StrConst l s) strLitLocs
@@ -43,6 +44,20 @@ optimizeInsts insts = (propagatedConsts, M.elems strLits)
     (propagatedConsts, (_, strLits)) =
       runState (propagateConstsInsts insts) (M.empty, M.empty)
 
+
+--eliminateDeadCode :: [LlvmInst] ->
+
+-- todo: M.Map Label ([Label], [Label])
+-- todo: M.Map Label [LlvmInst]
+-- list of labels (do if label not deleted)
+-- if label: goto label then leave as it is -> infinite loop
+-- delete label: delete from edges lists, if ins empty then delete completely (recursively)
+  -- phis: if exist then add to successors: a) not in their phis - leave as it is, b) otherwise merge with existing phi
+  -- phis: otherwise check if label exist in their phis and update accordingly
+-- at the end print in order, if first existing has pred, then add entry:
+
+
+-- Performs const folding, const propagation and peephole optimizations.
 propagateConstsInsts :: [LlvmInst] -> OptM [LlvmInst]
 propagateConstsInsts = mapM propagateConstsInst
 
@@ -75,6 +90,8 @@ propagateConstsInst (Mul loc val1 val2) = do
   (consts, strLits) <- get
   let updatedConsts = case (newVal1, newVal2) of
         (IntLit i1, IntLit i2) -> M.insert loc (IntLit (i1 * i2)) consts
+        (IntLit 1, reg) -> M.insert loc reg consts
+        (reg, IntLit 1) -> M.insert loc reg consts
         _ -> consts
   put (updatedConsts, strLits)
   return $ Mul loc newVal1 newVal2
@@ -83,7 +100,11 @@ propagateConstsInst (SDiv loc val1 val2) = do
   newVal2 <- computeVal val2
   (consts, strLits) <- get
   let updatedConsts = case (newVal1, newVal2) of
-        (IntLit i1, IntLit i2) -> M.insert loc (IntLit (i1 `div` i2)) consts
+        (IntLit i1, IntLit i2) -> M.insert loc (IntLit (i1 `quot` i2)) consts
+        (reg, IntLit 1) -> M.insert loc reg consts
+        (Reg loc1 t1, Reg loc2 t2)
+          | loc1 == loc2 -> M.insert loc (IntLit 1) consts
+          | otherwise -> consts
         _ -> consts
   put (updatedConsts, strLits)
   return $ SDiv loc newVal1 newVal2
@@ -93,6 +114,10 @@ propagateConstsInst (SRem loc val1 val2) = do
   (consts, strLits) <- get
   let updatedConsts = case (newVal1, newVal2) of
         (IntLit i1, IntLit i2) -> M.insert loc (IntLit (i1 `rem` i2)) consts
+        (reg, IntLit 1) -> M.insert loc (IntLit 0) consts
+        (Reg loc1 t1, Reg loc2 t2)
+          | loc1 == loc2 -> M.insert loc (IntLit 0) consts
+          | otherwise -> consts
         _ -> consts
   put (updatedConsts, strLits)
   return $ SRem loc newVal1 newVal2
@@ -103,6 +128,10 @@ propagateConstsInst (Add loc val1 val2) = do
   let updatedConsts = case (newVal1, newVal2) of
         (IntLit i1, IntLit i2) -> M.insert loc (IntLit (i1 + i2)) consts
         (BoolLit b1, BoolLit b2) -> M.insert loc (BoolLit (b1 `xor` b2)) consts
+        (IntLit 0, reg) -> M.insert loc reg consts
+        (reg, IntLit 0) -> M.insert loc reg consts
+        (BoolLit False, reg) -> M.insert loc reg consts
+        (reg, BoolLit False) -> M.insert loc reg consts
         _ -> consts
   put (updatedConsts, strLits)
   return $ Add loc newVal1 newVal2
@@ -112,8 +141,10 @@ propagateConstsInst (Sub loc val1 val2) = do
   (consts, strLits) <- get
   let updatedConsts = case (newVal1, newVal2) of
         (IntLit i1, IntLit i2) -> M.insert loc (IntLit (i1 - i2)) consts
-        (BoolLit b1, BoolLit b2) ->
-          M.insert loc (BoolLit (not (b1 && b2))) consts
+        (reg, IntLit 0) -> M.insert loc reg consts
+        (Reg loc1 t1, Reg loc2 t2)
+          | loc1 == loc2 -> M.insert loc (IntLit 0) consts
+          | otherwise -> consts
         _ -> consts
   put (updatedConsts, strLits)
   return $ Sub loc newVal1 newVal2
@@ -126,6 +157,9 @@ propagateConstsInst (Icmp loc op val1 val2) = do
           M.insert loc (BoolLit (cmpInt op i1 i2)) consts
         (BoolLit b1, BoolLit b2) ->
           M.insert loc (BoolLit (cmpBool op b1 b2)) consts
+        (Reg loc1 t1, Reg loc2 t2)
+          | loc1 == loc2 -> M.insert loc (BoolLit (isReflective op)) consts
+          | otherwise -> consts
         _ -> consts
   put (updatedConsts, strLits)
   return $ Icmp loc op newVal1 newVal2
@@ -149,6 +183,14 @@ cmpInt Ne = (/=)
 cmpBool :: LlvmRelOp -> Bool -> Bool -> Bool
 cmpBool Equ = (==)
 cmpBool Ne = (/=)
+
+isReflective :: LlvmRelOp -> Bool
+isReflective Lth = False
+isReflective Le = True
+isReflective Gth = False
+isReflective Ge = True
+isReflective Equ = True
+isReflective Ne = False
 
 computeVal :: Value -> OptM Value
 computeVal r@(Reg loc t) = do

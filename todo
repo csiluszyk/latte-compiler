@@ -1,9 +1,8 @@
 - Wszystkie parametry są przekazywane przez wartość. - to test
 - Przekazanie napisu jako parametru odbywa sie poprzez przekazanie przez wartość referencji do napisu.
 
-- test max int + 3
-
 - change stack path in Makefile
+- test Benke script
 
 OPTYMALIZACJE
 - nie usuwać wywołań funkcji - może mieć side effects
@@ -14,3 +13,4 @@ README:
 ROZSZERZENIA:
 
 
+12 -> 31 -> 21 (~40%)
