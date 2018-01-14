@@ -27,10 +27,10 @@ executable latc_llvm
                        LlvmLatte
                        OptLatte
                        ParLatte
+                       Paths_latte
                        SsaLatte
                        TypeCheckLatte
                        UtilsLatte
-                       Paths_latte
 
 test-suite latc-test
   type:             exitcode-stdio-1.0

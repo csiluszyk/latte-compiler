@@ -28,7 +28,7 @@ toSsa (LlvmProg s e defines) = LlvmProg s e newDefines
     newDefines = map runSsaDef defines
     runSsaDef (LlvmDef t l vs insts) = LlvmDef t l vs ssa
       where
-        ssa = fillEmpty (insertPhis phis globalSsa) t
+        ssa = insertPhis phis globalSsa
         ((globalSsa, phis), (globalSymTab, _, _)) = runReader (runStateT
           (runWriterT (toSsaGlobalInsts localSsa)) (localSymTab, "", 0)) cfg
         (localSsa, (localSymTab, _)) =
@@ -46,20 +46,6 @@ _insertPhis phisM (l@(Lab lab) : insts) =
 _insertPhis phisM (i : insts) = i : _insertPhis phisM insts
 
 
-fillEmpty :: [LlvmInst] -> LlvmType -> [LlvmInst]
-fillEmpty insts t = concat $ fillEmptyBlocks (splitBlocks insts) t
-
-fillEmptyBlocks :: [[LlvmInst]] -> LlvmType -> [[LlvmInst]]
-fillEmptyBlocks [] _ = []
-fillEmptyBlocks ([Lab l] : blocks) t = case t of
-    LlvmVoid -> [Lab l, VRetInst] : fillEmptyBlocks blocks t
-    LlvmBool -> [Lab l, RetInst (BoolLit False)] : fillEmptyBlocks blocks t
-    LlvmInt -> [Lab l, RetInst (IntLit 0)] : fillEmptyBlocks blocks t
-    LlvmStr ->
-      [Lab l, RetInst (Reg "@.str.0" LlvmStr)] : fillEmptyBlocks blocks t
-fillEmptyBlocks (block : blocks) t = block : fillEmptyBlocks blocks t
-
-
 generateCfg :: [LlvmInst] -> Cfg
 generateCfg insts = snd $ foldl foldInst ("", M.empty) insts
   where
@@ -69,6 +55,7 @@ generateCfg insts = snd $ foldl foldInst ("", M.empty) insts
     foldInst (currLab, cfg) (Goto lab) = (currLab, updateCfg cfg lab currLab)
     foldInst (currLab, cfg) (Lab lab) = (lab, cfg)
     foldInst (currLab, cfg) _ = (currLab, cfg)
+
     updateCfg cfg toLab fromLab = M.insert toLab bList cfg
       where bList = nub $ fromLab : M.findWithDefault [] toLab cfg
 

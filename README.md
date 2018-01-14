@@ -19,9 +19,8 @@
     * eliminating dead stores
         * if function call can then leave (function can have side effects like printing or infinite loop inside)
     * eliminating unreachable code
-    * ret : insts
-    * check used labels (also in phis) -> delete unused
 * same exprs locally (without function calls with side effects) (including getelementptr)
 * same exprs globally (without function calls with side effects) (including getelementptr)
-* flow-of-control optimization - removing jumps/conditional jumps to jumps
-    * [phi, goto] - can delete
+* flow-of-control optimization - removing jumps to jumps, including blocks with
+phi instructions only (except the case when subsequent blocks don't have phi
+instructions at all - in such case further SSA phase run should be run)
