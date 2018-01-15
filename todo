@@ -1,16 +1,3 @@
-- Wszystkie parametry są przekazywane przez wartość. - to test
-- Przekazanie napisu jako parametru odbywa sie poprzez przekazanie przez wartość referencji do napisu.
-
-- change stack path in Makefile && j4
-- test Benke script
-
-OPTYMALIZACJE
-- nie usuwać wywołań funkcji - może mieć side effects
-
-README:
-- w sytuacjach spornych starałem się kierować tym jak działa kompilator java
-
-ROZSZERZENIA:
-
+test script
 
 12 -> 31 -> 21 (~40%)
