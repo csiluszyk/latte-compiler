@@ -1,0 +1,33 @@
+int main() {
+    int z = 0;
+    int j = 1;
+    int x = readInt();
+    printInt(x + z);
+    printInt(z + x);
+
+    printInt(x - z);
+    printInt(x - x);
+
+    printInt(x * j);
+    printInt(j * x);
+
+    printInt(x / j);
+    printInt(x / x);
+
+    printInt(x % j);
+    printInt(x % x);
+
+    if(x == x) printString("1");
+    if(x != x) printString("1");
+    if(x > x) printString("2");
+    if(x >= x) printString("2");
+    if(x < x) printString("3");
+    if(x <= x) printString("3");
+
+    boolean b = z == z;
+
+    if (b) {
+        return 0;
+    }
+    return 1;
+}

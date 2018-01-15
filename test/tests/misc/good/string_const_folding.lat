@@ -1,0 +1,8 @@
+int main() {
+    string x = "test";
+    x = "str" + x;
+    if (x == "strtest") {
+        return 0;
+    }
+    return 1;
+}

@@ -47,10 +47,9 @@ fillInsts (StrLit loc s _ : insts) strMap =
 fillInsts (i : insts) strMap = i : fillInsts insts strMap
 
 optimizeInsts :: [LlvmInst] -> ([LlvmInst], [String])
-optimizeInsts insts = (optInsts, M.elems strLits)
+optimizeInsts insts = (optInsts, strLits)
   where
-    -- todo generate strLits at the end
-    (propagatedConsts, (_, strLits)) =
+    (propagatedConsts, _) =
       runState (propagateConstsInsts insts) (M.empty, M.empty)
     blocks = splitBlocks propagatedConsts
     labels = foldr (\(Lab l : _) labs -> l : labs) [] blocks
@@ -58,7 +57,11 @@ optimizeInsts insts = (optInsts, M.elems strLits)
     edges = generateEdges propagatedConsts
     (optInsts, _) =
       runState (eliminateDeadCode labels) (edges, vertices, M.empty)
+    strLits = concatMap findStrLits optInsts
 
+findStrLits :: LlvmInst -> [String]
+findStrLits (StrLit _ s _) = [s]
+findStrLits _ = []
 
 generateVertices :: [[LlvmInst]] -> CfgVertices
 generateVertices = foldl insertBlock M.empty
@@ -84,6 +87,7 @@ generateEdges insts = snd $ foldl foldEdges ("", M.empty) insts
         updatedToPreds = nub $ fromLab : toPreds
         tmpEdges = M.insert fromLab (fromPreds, updatedFromSuccs) edges
         updatedEdges = M.insert toLab (updatedToPreds, toSuccs) tmpEdges
+
 
 eliminateDeadCode :: [Label] -> OptDeadM [LlvmInst]
 eliminateDeadCode labels = do
@@ -512,6 +516,17 @@ propagateConstsInst (Call loc t n@("_concat") vals@[Reg l1 t1, Reg l2 t2]) = do
       put (consts, M.insert loc str strLits)
       return $ StrLit loc str emptyLoc
     (_, _) -> return $ Call loc t n vals
+propagateConstsInst (Call loc t n@("_streq") vals@[Reg l1 t1, Reg l2 t2]) = do
+  (consts, strLits) <- get
+  case (M.lookup l1 strLits, M.lookup l2 strLits) of
+    (Just str1, Just str2)
+      | str1 == str2 -> do
+        put (M.insert loc (BoolLit True) consts, strLits)
+        return $ Add loc (BoolLit True) (BoolLit False)
+      | otherwise -> do
+        put (M.insert loc (BoolLit False) consts, strLits)
+        return $ Add loc (BoolLit False) (BoolLit False)
+    _ -> return $ Call loc t n vals
 propagateConstsInst (Call loc t n vals) = do
   newVals <- mapM computeVal vals
   return $ Call loc t n newVals

@@ -1,0 +1,7 @@
+int main() {
+    boolean a = ((false || true) && true);
+    if(a)
+        return 0;
+    else
+        return 1;
+}

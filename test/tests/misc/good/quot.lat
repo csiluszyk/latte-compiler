@@ -1,0 +1,5 @@
+int main() {
+    printInt(5 / 3);
+    printInt(-5 / 3);
+    return 0;
+}
