@@ -97,11 +97,12 @@ eliminateDeadCode labels = do
   let currLabs = filter (`M.member` optVertices) labels  -- at least one elem
   if optVertices == vertices then do
     let firstLab = head currLabs
-        (fromPreds, _) = fromJust $ M.lookup firstLab optEdges
+        (fromPreds, _) = let (Just x) = M.lookup firstLab optEdges in x
         entryBlock = case fromPreds of
           [] -> []
           _ -> [Lab "%entry", Goto firstLab]
-        insts = concatMap (\l -> fromJust $ M.lookup l optVertices) currLabs
+        insts =
+          concatMap (\l -> let (Just x) = M.lookup l optVertices in x) currLabs
     return $ entryBlock ++ insts
   else
     eliminateDeadCode currLabs
@@ -180,7 +181,6 @@ eliminateDeadJumps lab = do
     Nothing -> return ()
 
 eliminateDeadJump :: Label -> [LlvmInst] -> OptDeadM ()
-eliminateDeadJump _ [] = return ()
 
 eliminateDeadJump lab [Lab lSrc, Goto lDst] =
   eliminateDeadJumpGoto lab lDst
@@ -192,18 +192,71 @@ eliminateDeadJump lab [Lab lSrc, Br val lDstT lDstF] =
 eliminateDeadJump lab [Phi {}, Br val lDstT lDstF] =
   eliminateDeadJumpBr lab val lDstT lDstF
 
+eliminateDeadJump lab [inst@(Goto lDst)]
+  | lab /= lDst = do
+    (edges, vertices, _) <- get
+    let (preds, _) = let (Just x) = M.lookup lab edges in x
+        predBlocks = map (\p -> let (Just x) = M.lookup p vertices in x) preds
+    when (length preds == 1 && isGoto (head predBlocks)) $ do
+      mergeEdges (head preds) lab lDst
+      (newEdges, newVertices, replacements) <- get
+      let block = let (Just x) = M.lookup lab newVertices in x
+          newPredBlock = init (head predBlocks) ++ tail block
+          updatedVertices = M.insert (head preds) newPredBlock newVertices
+          deletedEdges = M.delete lab newEdges
+          deletedVertices = M.delete lab updatedVertices
+      put (deletedEdges, deletedVertices, replacements)
+  | otherwise = return ()
+
+eliminateDeadJump lab [inst@(Br val lDstT lDstF)]
+  | lab `notElem` [lDstT, lDstF] = do
+    (edges, vertices, _) <- get
+    let (preds, _) = let (Just x) = M.lookup lab edges in x
+        predBlocks = map (\p -> let (Just x) = M.lookup p vertices in x) preds
+    when (length preds == 1 && isGoto (head predBlocks)) $ do
+      mergeEdges (head preds) lab lDstT
+      mergeEdges (head preds) lab lDstF
+      (newEdges, newVertices, replacements) <- get
+      let block = let (Just x) = M.lookup lab newVertices in x
+          newPredBlock = init (head predBlocks) ++ tail block
+          updatedVertices = M.insert (head preds) newPredBlock newVertices
+          deletedEdges = M.delete lab newEdges
+          deletedVertices = M.delete lab updatedVertices
+      put (deletedEdges, deletedVertices, replacements)
+  | otherwise = return ()
+
+eliminateDeadJump lab [inst@(RetInst val)] = eliminateDeadJumpRet lab inst
+eliminateDeadJump lab [inst@VRetInst] = eliminateDeadJumpRet lab inst
+
 eliminateDeadJump lab (inst : insts) = do
   eliminateDeadJump lab insts
   return ()
+
+eliminateDeadJumpRet :: Label -> LlvmInst -> OptDeadM ()
+eliminateDeadJumpRet lab ret = do
+  (edges, vertices, replacements) <- get
+  let (preds, _) = let (Just x) = M.lookup lab edges in x
+      predBlocks = map (\p -> let (Just x) = M.lookup p vertices in x) preds
+  when (length preds == 1 && isGoto (head predBlocks)) $ do
+    let fromLab = head preds
+        (fromPreds, fromSuccs) = let (Just x) = M.lookup fromLab edges in x
+        updatedFromSuccs = delete lab fromSuccs
+        updatedEdges = M.insert fromLab (fromPreds, updatedFromSuccs) edges
+        block = let (Just x) = M.lookup lab vertices in x
+        newPredBlock = init (head predBlocks) ++ tail block
+        updatedVertices = M.insert (head preds) newPredBlock vertices
+        deletedEdges = M.delete lab updatedEdges
+        deletedVertices = M.delete lab updatedVertices
+    put (deletedEdges, deletedVertices, replacements)
 
 eliminateDeadJumpGoto :: Label -> Label -> OptDeadM ()
 eliminateDeadJumpGoto lab lDst
   | lab /= lDst = do
     (edges, vertices, _) <- get
-    let (preds, _) = fromJust $ M.lookup lab edges
-        predBlocks = map (\p -> fromJust $ M.lookup p vertices) preds
-        block = fromJust $ M.lookup lab vertices
-        toBlock = fromJust $ M.lookup lDst vertices
+    let (preds, _) = let (Just x) = M.lookup lab edges in x
+        predBlocks = map (\p -> let (Just x) = M.lookup p vertices in x) preds
+        block = let (Just x) = M.lookup lab vertices in x
+        toBlock = let (Just x) = M.lookup lDst vertices in x
         (phis, _) = partition isPhi block
         (toPhis, _) = partition isPhi toBlock
         canMovePhis = null phis || not (null toPhis)
@@ -224,11 +277,11 @@ eliminateDeadJumpBr :: Label -> Value -> Label -> Label -> OptDeadM ()
 eliminateDeadJumpBr lab val lDstT lDstF
   | lab `notElem` [lDstT, lDstF] = do
     (edges, vertices, _) <- get
-    let (preds, _) = fromJust $ M.lookup lab edges
-        predBlocks = map (\p -> fromJust $ M.lookup p vertices) preds
-        block = fromJust $ M.lookup lab vertices
-        toBlockT = fromJust $ M.lookup lDstT vertices
-        toBlockF = fromJust $ M.lookup lDstF vertices
+    let (preds, _) = let (Just x) = M.lookup lab edges in x
+        predBlocks = map (\p -> let (Just x) = M.lookup p vertices in x) preds
+        block = let (Just x) = M.lookup lab vertices in x
+        toBlockT = let (Just x) = M.lookup lDstT vertices in x
+        toBlockF = let (Just x) = M.lookup lDstF vertices in x
         (phis, _) = partition isPhi block
         (toPhisT, _) = partition isPhi toBlockT
         (toPhisF, _) = partition isPhi toBlockF
@@ -248,6 +301,17 @@ eliminateDeadJumpBr lab val lDstT lDstF
       put (deletedEdges, deletedVertices, replacements)
   | otherwise = return ()
 
+mergeEdges :: Label -> Label -> Label -> OptDeadM ()
+mergeEdges fromLab viaLab toLab = do
+  (edges, vertices, replacements) <- get
+  let (fromPreds, fromSuccs) = let (Just x) = M.lookup fromLab edges in x
+      (toPreds, toSuccs) = let (Just x) = M.lookup toLab edges in x
+      updatedFromSuccs = nub $ toLab : delete viaLab toPreds
+      updatedToPreds = nub $ fromLab : delete viaLab toPreds
+      tmpEdges = M.insert fromLab (fromPreds, updatedFromSuccs) edges
+      updatedEdges = M.insert toLab (updatedToPreds, toSuccs) tmpEdges
+  put (updatedEdges, vertices, replacements)
+
 isGoto :: [LlvmInst] -> Bool
 isGoto insts = case last insts of
   Goto _ -> True
@@ -256,17 +320,17 @@ isGoto insts = case last insts of
 rerouteEdge :: [Label] -> Label -> Label -> OptDeadM ()
 rerouteEdge fromLabs viaLab toLab = do
   (edges, vertices, replacements) <- get
-  let (toPreds, toSuccs) = fromJust $ M.lookup toLab edges
+  let (toPreds, toSuccs) = let (Just x) = M.lookup toLab edges in x
       updatedToPreds = nub $ fromLabs ++ delete viaLab toPreds
       tmpEdges = foldl foldUpdateFromEdge edges fromLabs
         where
           foldUpdateFromEdge e l =
             M.insert l (lPreds, nub $ toLab : delete viaLab lSuccs) e
-              where (lPreds, lSuccs) = fromJust $ M.lookup l e
+              where (lPreds, lSuccs) = let (Just x) = M.lookup l e in x
       updatedEdges = M.insert toLab (updatedToPreds, toSuccs) tmpEdges
 
-      viaBlock = fromJust $ M.lookup viaLab vertices
-      toBlock = fromJust $ M.lookup toLab vertices
+      viaBlock = let (Just x) = M.lookup viaLab vertices in x
+      toBlock = let (Just x) = M.lookup toLab vertices in x
       (viaPhis, _) = partition isPhi viaBlock
       (toPhis, toNoPhis) = partition isPhi toBlock
       newPhis = case toPhis of
@@ -319,11 +383,11 @@ eliminateUnreachable lab [Br (BoolLit False) lDstT lDstF] = do
 
 eliminateUnreachable lab (RetInst val : insts) = do
   (edges, _, _) <- get
-  mapM_ (deleteEdge lab) (snd $ fromJust $ M.lookup lab edges)
+  mapM_ (deleteEdge lab) (let (Just x) = M.lookup lab edges in snd x)
   return [RetInst val]
 eliminateUnreachable lab (VRetInst : insts) = do
   (edges, _, _) <- get
-  mapM_ (deleteEdge lab) (snd $ fromJust $ M.lookup lab edges)
+  mapM_ (deleteEdge lab) (let (Just x) = M.lookup lab edges in snd x)
   return [VRetInst]
 
 eliminateUnreachable lab (inst : insts) = do
@@ -333,8 +397,8 @@ eliminateUnreachable lab (inst : insts) = do
 deleteEdge :: Label -> Label -> OptDeadM ()
 deleteEdge fromLab toLab = do
   (edges, vertices, replacements) <- get
-  let (fromPreds, fromSuccs) = fromJust $ M.lookup fromLab edges
-      (toPreds, toSuccs) = fromJust $ M.lookup toLab edges
+  let (fromPreds, fromSuccs) = let (Just x) = M.lookup fromLab edges in x
+      (toPreds, toSuccs) = let (Just x) = M.lookup toLab edges in x
       updatedFromSuccs = delete toLab fromSuccs
       updatedToPreds = delete fromLab toPreds
       tmpEdges = M.insert fromLab (fromPreds, updatedFromSuccs) edges
@@ -352,7 +416,7 @@ deleteEdge fromLab toLab = do
 shrinkPhis :: Label -> Label -> OptDeadM ()
 shrinkPhis fromLab toLab = do
   (_, vertices, _) <- get
-  let insts = fromJust $ M.lookup toLab vertices
+  let insts = let (Just x) = M.lookup toLab vertices in x
   updatedInsts <- concatMapM (shrinkPhi fromLab) insts
   (edges, newVertices, replacements) <- get
   put (edges, M.insert toLab updatedInsts newVertices, replacements)

@@ -13,14 +13,12 @@
     * division: `x / 1`, `x / x`
     * modulo: `x % 1`, `x % x`
     * comparision: `x op x`
-
-### todo:
 * dead code elimination
-    * eliminating dead stores
-        * if function call can then leave (function can have side effects like printing or infinite loop inside)
+    * eliminating dead stores (except function calls - they have side effects
+    like IO or infinite loop inside)
     * eliminating unreachable code
-* same exprs locally (without function calls with side effects) (including getelementptr)
-* same exprs globally (without function calls with side effects) (including getelementptr)
-* flow-of-control optimization - removing jumps to jumps, including blocks with
-phi instructions only (except the case when subsequent blocks don't have phi
-instructions at all - in such case further SSA phase run should be run)
+* flow-of-control optimization
+    * removing jumps to jumps, including blocks with phi instructions only
+    (except the case when subsequent blocks don't have phi instructions at all
+    - in such case further SSA phase run should be run)
+    * unifying direct paths in CFG
