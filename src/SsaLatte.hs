@@ -187,33 +187,32 @@ updateValGlobal (Reg loc t)
 updateValGlobal val = return val
 
 getGlobalLoc :: Label -> Loc -> LlvmType -> [Label] -> SsaGlobalM (Label, Loc)
-getGlobalLoc currLab loc t preds = do
-  predsLocs <- mapM (\p -> _getGlobalLoc p loc t) preds
+getGlobalLoc currLab loc t [] =
+  error $ "internal error: empty preds for " ++ currLab ++ " " ++ loc
+getGlobalLoc currLab loc t [pred] = do
+  -- Optimize the common case of one predecessor: no phi needed.
+  (_, locA) <- _getGlobalLoc pred loc t
   (symTab, lab, n) <- get
-  case predsLocs of
-    [] -> case preds of
-      [] -> error $ "internal error: empty preds for " ++ currLab ++ " " ++ loc
-      _ -> error $ "internal error: loc not found for preds " ++ show preds
-    [(_, newLoc)] -> do
-      put (M.insert (loc, currLab) newLoc symTab, lab, n)
-      return (currLab, newLoc)
-    [(labA, locA), (labB, locB)]
-      | all (== emptyLoc) [locA, locB] -> error "internal error: all empty"
-      | locA == emptyLoc -> do
-        put (M.insert (loc, currLab) locB symTab, lab, n)
-        return (currLab, locB)
-      | locB == emptyLoc -> do
-        put (M.insert (loc, currLab) locA symTab, lab, n)
-        return (currLab, locA)
-      | locA == locB -> do
-        put (M.insert (loc, currLab) locA symTab, lab, n)
-        return (currLab, locA)
-      | otherwise -> do
-        let newLoc = getPhiLoc n
-        put (M.insert (loc, currLab) newLoc symTab, lab, n + 1)
-        tell [(currLab, Phi newLoc t [(Reg locA t, labA), (Reg locB t, labB)])]
-        return (currLab, newLoc)
-    _ -> error "internal error: to many preds found"
+  put (M.insert (loc, currLab) locA symTab, lab, n)
+  return (currLab, locA)
+getGlobalLoc currLab loc t preds = do
+  (symTab, lab, n) <- get
+  let newLoc = getPhiLoc n
+  put (M.insert (loc, currLab) newLoc symTab, lab, n + 1)
+  [(labA, locA), (labB, locB)] <- mapM (\p -> _getGlobalLoc p loc t) preds
+  (newSymTab, lab, newN) <- get
+  if all (== newLoc) [locA, locB] then
+    error "internal error: all newLoc"
+  else if locA == newLoc then do
+    put (M.insert (loc, currLab) locB newSymTab, lab, newN)
+    return (currLab, locB)
+  else if (locB == newLoc ) || locA == locB then do
+    put (M.insert (loc, currLab) locA newSymTab, lab, newN)
+    return (currLab, locA)
+  else do
+    put (M.insert (loc, currLab) newLoc newSymTab, lab, newN)
+    tell [(currLab, Phi newLoc t [(Reg locA t, labA), (Reg locB t, labB)])]
+    return (currLab, newLoc)
 
 _getGlobalLoc :: Label -> Loc -> LlvmType -> SsaGlobalM (Label, Loc)
 _getGlobalLoc currLab loc t = do
@@ -221,7 +220,6 @@ _getGlobalLoc currLab loc t = do
   case M.lookup (loc, currLab) symTab of
     Just newLoc -> return (currLab, getFinalLoc newLoc currLab symTab)
     Nothing -> do
-      put (M.insert (loc, currLab) emptyLoc symTab, lab, n)
       cfg <- ask
       let preds = M.findWithDefault [] currLab cfg
       getGlobalLoc currLab loc t preds
