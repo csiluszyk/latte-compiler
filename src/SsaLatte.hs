@@ -199,9 +199,15 @@ getGlobalLoc currLab loc t preds = do
       return (currLab, newLoc)
     [(labA, locA), (labB, locB)]
       | all (== emptyLoc) [locA, locB] -> error "internal error: all empty"
-      | locA == emptyLoc -> return (currLab, locB)
-      | locB == emptyLoc -> return (currLab, locA)
-      | locA == locB -> return (currLab, locA)
+      | locA == emptyLoc -> do
+        put (M.insert (loc, currLab) locB symTab, lab, n)
+        return (currLab, locB)
+      | locB == emptyLoc -> do
+        put (M.insert (loc, currLab) locA symTab, lab, n)
+        return (currLab, locA)
+      | locA == locB -> do
+        put (M.insert (loc, currLab) locA symTab, lab, n)
+        return (currLab, locA)
       | otherwise -> do
         let newLoc = getPhiLoc n
         put (M.insert (loc, currLab) newLoc symTab, lab, n + 1)
