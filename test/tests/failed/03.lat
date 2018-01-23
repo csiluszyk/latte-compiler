@@ -1,0 +1,8 @@
+int main() {
+    int i = 100;
+    // NOTE: Originally `<`, changed to avoid infinite test case.
+    while (i + 20 > 200) {
+        printInt(i);
+    }
+    return 0;
+}

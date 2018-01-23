@@ -1,0 +1,24 @@
+int funkcja_declarations (int n) {
+  int i=0;
+  int x=1;
+  int y;
+  int z=1111111;
+  while (i<n) {
+    int y=x;
+    int x=y+1;
+    z=z+x;
+    i++;
+  }
+
+  return z;
+}
+
+int main () {
+  int x=0;
+
+  x=x+funkcja_declarations(2222222);
+
+  printInt(x);
+
+  return 0;
+}

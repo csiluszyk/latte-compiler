@@ -1,0 +1,24 @@
+int funkcja_declarations (int x, int y, int z, int n) {
+  int i=0;
+  int m=0;
+  int t;
+  while (i<n) {
+    t=((x+1111)*(z+2222)-(x-3333)*(y+4444))+((x-1111)*(z-2222)+(x+3333)*(y-4444));
+    if (m<t) m=t;
+    t=((x+1111)*(z+2222)-(x-3333)*(y+4444))+((x-1111)*(z-2222)+(x+3333)*(y-4444));
+    if (m<t) m=t;
+    x++;
+    y--;
+    z++;
+    i++;
+  }
+
+  return m;
+}
+
+int main () {
+  int x=0;
+  x=x+funkcja_declarations(4,5,6,20);
+  printInt(x);
+  return 0;
+}

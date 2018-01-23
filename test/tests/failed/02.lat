@@ -1,0 +1,26 @@
+int main() {
+    printInt(f(1,2));
+    return 0 ;
+}
+
+int f(int a, int b) {
+    int t = 3;
+    int s,pom;
+
+    s= a+b;
+    pom =s;
+    while (t >= 0) {
+      if (t>0) {
+         if (s > 10) {
+           pom = (a+b) /3;
+           s = s /3;
+         }
+         else {
+           pom = 3* (a+b);
+           s = 3 * s;
+         }
+      }
+      t--;
+    }
+    return (a+b+pom);
+}

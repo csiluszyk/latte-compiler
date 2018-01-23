@@ -1,0 +1,34 @@
+int funkcja_whilefalse () {
+  while (false) {
+    printInt(2042);
+  }
+
+  return 0;
+}
+
+int funkcja_whilenottrue () {
+   while (!true) {
+    printInt(2042);
+  }
+
+  return 0;
+}
+
+
+int funkcja_whilebool() {
+  while ((!true) || false || (!true)) {
+    printInt(2042);
+  }
+  return 0;
+}
+
+
+int main () {
+  int x=0;
+
+  x=x+funkcja_whilefalse ();
+  x=x+funkcja_whilenottrue ();
+  x=x+funkcja_whilebool ();
+
+  return 0;
+}
