@@ -216,13 +216,17 @@ getGlobalLoc currLab loc t preds = do
 
 _getGlobalLoc :: Label -> Loc -> LlvmType -> SsaGlobalM (Label, Loc)
 _getGlobalLoc currLab loc t = do
-  (symTab, lab, n) <- get
+  (symTab, _, _) <- get
+  cfg <- ask
+  let preds = M.findWithDefault [] currLab cfg
   case M.lookup (loc, currLab) symTab of
-    Just newLoc -> return (currLab, getFinalLoc newLoc currLab symTab)
-    Nothing -> do
-      cfg <- ask
-      let preds = M.findWithDefault [] currLab cfg
-      getGlobalLoc currLab loc t preds
+    Just newLoc -> do
+      let fLoc = getFinalLoc newLoc currLab symTab
+      if head (tail fLoc)  == 't' then  -- tmp arg to replace
+        getGlobalLoc currLab newLoc t preds
+      else
+        return (currLab, getFinalLoc newLoc currLab symTab)
+    Nothing -> getGlobalLoc currLab loc t preds
 
 getFinalLoc :: Loc -> Label -> SymTab -> Loc
 getFinalLoc loc lab symTab =
