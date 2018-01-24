@@ -372,7 +372,10 @@ eliminateUnreachables lab = do
     Just insts -> do
       updatedInsts <- eliminateUnreachable lab insts
       (edges, newVertices, replacements) <- get
-      put (edges, M.insert lab updatedInsts newVertices, replacements)
+      let updatedVertices = case M.lookup lab newVertices of
+            Nothing -> newVertices
+            Just _ -> M.insert lab updatedInsts newVertices
+      put (edges, updatedVertices, replacements)
     Nothing -> return ()
 
 eliminateUnreachable :: Label -> [LlvmInst] -> OptDeadM [LlvmInst]
