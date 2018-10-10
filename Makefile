@@ -1,4 +1,4 @@
-STACK=/home/students/inf/PUBLIC/MRJP/Stack/stack
+STACK=stack
 
 all:
 	$(STACK) setup

@@ -1,4 +1,4 @@
-# latte compiler v.1.0.0 - Cezary Siłuszyk, 321191
+# latte compiler v.1.1.1
 
 ## Building the project
 ### Requirements
@@ -81,6 +81,3 @@ propagation):
     (except case when subsequent blocks don't have phi instructions at all -
     in such case further SSA phase run should be run),
     * unifying direct paths (i.e. without branches) in CFG.
-
-## Extensions
-In current version there is no implemented extensions.
